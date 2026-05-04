@@ -3,6 +3,7 @@ import { fetchDonors } from '@/lib/monday'
 import KpiCard from '@/components/KpiCard'
 import DonorCard from '@/components/DonorCard'
 import SearchInput from '@/components/SearchInput'
+import RefreshButton from '@/components/RefreshButton'
 
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -10,6 +11,7 @@ function fUSD(n: number) {
 
 async function DashboardContent({ q }: { q?: string }) {
   const donors = await fetchDonors()
+  const lastUpdated = new Date().toISOString()
 
   const totalCommitments = donors.reduce((s, d) => s + d.totalCommitments, 0)
   const totalDonations = donors.reduce((s, d) => s + d.totalDonations, 0)
@@ -28,6 +30,8 @@ async function DashboardContent({ q }: { q?: string }) {
 
   return (
     <>
+      <RefreshButton lastUpdated={lastUpdated} />
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <KpiCard label='סה"כ התחייבויות' value={fUSD(totalCommitments)} accent />
