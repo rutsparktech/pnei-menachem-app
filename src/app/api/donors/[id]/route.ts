@@ -1,6 +1,8 @@
 import { fetchDonorDetail } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
 
+export const revalidate = 60
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

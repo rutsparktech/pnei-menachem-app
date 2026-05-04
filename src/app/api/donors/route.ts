@@ -1,6 +1,8 @@
 import { fetchDonors } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
 
+export const revalidate = 60
+
 export async function GET(request: NextRequest) {
   try {
     const q = request.nextUrl.searchParams.get('q')?.toLowerCase()

@@ -2,7 +2,9 @@ import type { Donor, Donation, Commitment, NewDonationInput } from './types'
 
 const MONDAY_API_URL = 'https://api.monday.com/v2'
 
-async function mondayQuery(query: string) {
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function mondayQuery(query: string, attempt = 0): Promise<any> {
   const token = process.env.MONDAY_API_TOKEN
   if (!token) throw new Error('MONDAY_API_TOKEN not configured')
   const res = await fetch(MONDAY_API_URL, {
@@ -15,6 +17,11 @@ async function mondayQuery(query: string) {
     body: JSON.stringify({ query }),
     cache: 'no-store',
   })
+  if (res.status === 429) {
+    if (attempt >= 3) throw new Error('Monday API rate limit exceeded after retries')
+    await delay(Math.pow(2, attempt) * 1000) // 1s, 2s, 4s
+    return mondayQuery(query, attempt + 1)
+  }
   if (!res.ok) throw new Error(`Monday API error: ${res.status}`)
   const json = await res.json()
   if (json.errors) throw new Error(json.errors[0]?.message ?? 'Monday API error')
@@ -218,8 +225,8 @@ export async function fetchDonors(): Promise<Donor[]> {
 
   const [donorItems, donationItems, commitmentItems] = await Promise.all([
     fetchAllItems(donorBoard, DONOR_COLS),
-    fetchAllItems(donationBoard, DONATION_COLS),
-    fetchAllItems(commitmentBoard, COMMITMENT_COLS),
+    delay(300).then(() => fetchAllItems(donationBoard, DONATION_COLS)),
+    delay(600).then(() => fetchAllItems(commitmentBoard, COMMITMENT_COLS)),
   ])
 
   // Group raw donation items by donor ID before mapping
@@ -280,8 +287,8 @@ export async function fetchDonorDetail(id: string): Promise<{
         column_values(ids: [${DONOR_COLS}]) { ${COL_FRAGMENT} }
       }
     }`),
-    fetchAllItems(donationBoard, DONATION_COLS),
-    fetchAllItems(commitmentBoard, COMMITMENT_COLS),
+    delay(300).then(() => fetchAllItems(donationBoard, DONATION_COLS)),
+    delay(600).then(() => fetchAllItems(commitmentBoard, COMMITMENT_COLS)),
   ])
 
   const rawDonor: RawItem | undefined = donorData.items?.[0]

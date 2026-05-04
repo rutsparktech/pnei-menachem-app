@@ -1,6 +1,8 @@
 import { fetchDonations, createDonation } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
 
+export const revalidate = 60
+
 export async function GET(request: NextRequest) {
   try {
     const donorId = request.nextUrl.searchParams.get('donorId') ?? undefined
