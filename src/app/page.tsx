@@ -1,65 +1,98 @@
-import Image from "next/image";
+import { Suspense } from 'react'
+import { fetchDonors } from '@/lib/monday'
+import KpiCard from '@/components/KpiCard'
+import DonorCard from '@/components/DonorCard'
+import SearchInput from '@/components/SearchInput'
 
-export default function Home() {
+function fUSD(n: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+}
+
+async function DashboardContent({ q }: { q?: string }) {
+  const donors = await fetchDonors()
+
+  const totalCommitments = donors.reduce((s, d) => s + d.totalCommitments, 0)
+  const totalDonations = donors.reduce((s, d) => s + d.totalDonations, 0)
+  const totalBalance = donors.reduce((s, d) => s + d.balance, 0)
+  const activeDonors = donors.filter((d) => d.totalCommitments > 0).length
+
+  const filtered = q
+    ? donors.filter(
+        (d) =>
+          d.name.toLowerCase().includes(q.toLowerCase()) ||
+          d.hebrewName.includes(q) ||
+          d.city.includes(q) ||
+          d.donorNumber.includes(q)
+      )
+    : donors
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <KpiCard label='סה"כ התחייבויות' value={fUSD(totalCommitments)} accent />
+        <KpiCard label='סה"כ תרומות' value={fUSD(totalDonations)} />
+        <KpiCard label="יתרה לגבייה" value={fUSD(totalBalance)} sub={totalBalance > 0 ? 'לגבייה' : 'מאוזן'} />
+        <KpiCard
+          label="תורמים פעילים"
+          value={activeDonors.toString()}
+          sub={`מתוך ${donors.length} תורמים`}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+      </div>
+
+      {/* Donors Grid */}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-bold text-text text-lg">תורמים</h2>
+        <span className="text-sm text-muted">{filtered.length} רשומות</span>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted">
+          <p className="text-lg">לא נמצאו תורמים</p>
+          {q && <p className="text-sm mt-1">נסה חיפוש אחר</p>}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {filtered.map((donor) => (
+            <DonorCard key={donor.id} donor={donor} />
+          ))}
         </div>
-      </main>
+      )}
+    </>
+  )
+}
+
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>
+}) {
+  const { q } = await searchParams
+
+  return (
+    <div className="px-4 py-4 max-w-2xl mx-auto">
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold text-primary mb-1">שלום</h1>
+        <p className="text-sm text-muted">ניהול תורמים · קרן פני מנחם</p>
+      </div>
+
+      <div className="mb-5">
+        <Suspense>
+          <SearchInput placeholder="חיפוש לפי שם, עיר או מספר תורם..." />
+        </Suspense>
+      </div>
+
+      <Suspense
+        fallback={
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-44 bg-surface rounded-[--radius-card] animate-pulse border border-border" />
+            ))}
+          </div>
+        }
+      >
+        <DashboardContent q={q} />
+      </Suspense>
     </div>
-  );
+  )
 }
