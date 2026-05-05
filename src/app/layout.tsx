@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Heebo } from 'next/font/google'
+import { Suspense } from 'react'
 import './globals.css'
 import BottomNav from '@/components/BottomNav'
 import TopHeader from '@/components/TopHeader'
@@ -25,9 +26,9 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-background">
         <TopHeader />
         <main className="flex-1 pt-16 pb-20 overflow-y-auto">
-          {children}
+          <Suspense fallback={null}>{children}</Suspense>
         </main>
-        <BottomNav />
+        <Suspense fallback={null}><BottomNav /></Suspense>
       </body>
     </html>
   )
