@@ -1,11 +1,5 @@
+import { fetchAllDonorsWithDetails } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
-
-export const revalidate = 300
-
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return 'http://localhost:3000'
-}
 
 export async function GET(
   _request: NextRequest,
@@ -13,10 +7,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { donors } = await fetch(`${getBaseUrl()}/api/donors`, {
-      next: { revalidate: 300 },
-    }).then((r) => r.json())
-    const donor = donors.find((d: { id: string }) => d.id === id)
+    const donors = await fetchAllDonorsWithDetails()
+    const donor = donors.find((d) => d.id === id)
     if (!donor) return Response.json({ error: 'תורם לא נמצא' }, { status: 404 })
     return Response.json(donor)
   } catch (err) {

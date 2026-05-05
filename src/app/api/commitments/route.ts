@@ -1,17 +1,10 @@
-export const revalidate = 300
-
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return 'http://localhost:3000'
-}
+import { fetchAllDonorsWithDetails } from '@/lib/monday'
 
 export async function GET() {
   try {
-    const { donors } = await fetch(`${getBaseUrl()}/api/donors`, {
-      next: { revalidate: 300 },
-    }).then((r) => r.json())
-    const commitments = (donors as Array<{ name: string; commitments: unknown[] }>).flatMap((d) =>
-      d.commitments.map((com) => ({ ...(com as object), donorName: d.name }))
+    const donors = await fetchAllDonorsWithDetails()
+    const commitments = donors.flatMap((d) =>
+      d.commitments.map((com) => ({ ...com, donorName: d.name }))
     )
     return Response.json(commitments)
   } catch (err) {

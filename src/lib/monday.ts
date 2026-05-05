@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from 'next/cache'
 import type { Donor, Donation, Commitment, DonorWithDetails, NewDonationInput } from './types'
 
 const MONDAY_API_URL = 'https://api.monday.com/v2'
@@ -197,6 +198,10 @@ function mapDonorWithStats(item: RawItem, donations: Donation[], commitments: Co
 }
 
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
+  'use cache'
+  cacheTag('monday-data')
+  cacheLife({ revalidate: 300, stale: 300, expire: 3600 })
+
   const [donorItems, donationItems, commitmentItems] = await Promise.all([
     fetchAllItems(DONOR_BOARD_ID, DONOR_COLS),
     delay(300).then(() => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)),
