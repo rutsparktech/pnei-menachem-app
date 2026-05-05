@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDonorById } from '@/lib/api'
@@ -88,12 +89,23 @@ function YearStat({
   )
 }
 
-export default async function DonorPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = await params
+function DonorPageSkeleton() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-4 animate-pulse">
+      <div className="h-5 w-28 bg-surface rounded mb-4" />
+      <div className="bg-surface rounded-[--radius-card] h-32 mb-4" />
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        {[...Array(3)].map((_, i) => <div key={i} className="bg-surface rounded-[--radius-card] h-16" />)}
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        {[...Array(2)].map((_, i) => <div key={i} className="bg-surface rounded-xl h-20" />)}
+      </div>
+      <div className="bg-surface rounded-[--radius-card] h-40" />
+    </div>
+  )
+}
+
+async function DonorContent({ id }: { id: string }) {
   const donor = await getDonorById(id)
   if (!donor) notFound()
 
@@ -313,5 +325,19 @@ export default async function DonorPage({
         )}
       </section>
     </div>
+  )
+}
+
+export default async function DonorPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  return (
+    <Suspense fallback={<DonorPageSkeleton />}>
+      {params.then(({ id }) => (
+        <DonorContent id={id} />
+      ))}
+    </Suspense>
   )
 }

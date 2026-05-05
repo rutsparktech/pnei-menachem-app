@@ -203,7 +203,7 @@ function mapDonorWithStats(item: RawItem, donations: Donation[], commitments: Co
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   'use cache'
   cacheTag('monday-data')
-  cacheLife({ revalidate: 300, stale: 300, expire: 3600 })
+  cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
 
   const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
   await delay(500)

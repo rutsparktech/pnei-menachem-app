@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { getAllDonors } from '@/lib/api'
 import type { Donation } from '@/lib/types'
 
@@ -29,7 +30,7 @@ const FUNDS = [
   { key: 'עזרה דחופה', label: 'עזרה דחופה', goalUSD: 150000, color: 'bg-[#059669]', light: 'bg-[#d1fae5]', text: 'text-[#065f46]' },
 ]
 
-export default async function PurposeReport() {
+async function PurposeContent() {
   const donors = await getAllDonors()
   const allDonations: Donation[] = donors.flatMap((d) => d.donations)
 
@@ -41,10 +42,7 @@ export default async function PurposeReport() {
   const total = paid.reduce((s, d) => s + d.amount, 0)
 
   return (
-    <div className="px-4 py-4 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-primary mb-1">דוח לפי ייעוד</h1>
-      <p className="text-sm text-muted mb-5">התקדמות לפי קרן</p>
-
+    <>
       <div className="space-y-5">
         {FUNDS.map((fund) => {
           const fundDonations = paid.filter((d) => d.designation === fund.key)
@@ -106,6 +104,26 @@ export default async function PurposeReport() {
         <p className="text-2xl font-bold">{fUSD(total)}</p>
         <p className="text-white/60 text-xs mt-1">{paid.length} תרומות</p>
       </div>
+    </>
+  )
+}
+
+export default function PurposeReport() {
+  return (
+    <div className="px-4 py-4 max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold text-primary mb-1">דוח לפי ייעוד</h1>
+      <p className="text-sm text-muted mb-5">התקדמות לפי קרן</p>
+      <Suspense
+        fallback={
+          <div className="space-y-5">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-48 bg-surface rounded-[--radius-card] animate-pulse border border-border" />
+            ))}
+          </div>
+        }
+      >
+        <PurposeContent />
+      </Suspense>
     </div>
   )
 }
