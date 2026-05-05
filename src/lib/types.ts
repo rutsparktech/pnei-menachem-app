@@ -46,6 +46,11 @@ export interface Commitment {
   donorLink: string
 }
 
+export interface DonorWithDetails extends Donor {
+  donations: Donation[]
+  commitments: Commitment[]
+}
+
 export interface NewDonationInput {
   donorId: string
   donorName: string

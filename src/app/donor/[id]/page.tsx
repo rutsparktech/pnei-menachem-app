@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { fetchDonorDetail } from '@/lib/monday'
+import { getDonorById } from '@/lib/api'
 import { ClassificationBadge } from '@/components/StatusBadge'
 import type { Donation, Commitment } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
 
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -18,7 +20,7 @@ function fAmount(n: number, currency: string) {
 }
 
 function fDate(d: string) {
-  if (!d) return '—'
+  if (!d) return ''
   try {
     return new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(d))
   } catch {
@@ -27,7 +29,7 @@ function fDate(d: string) {
 }
 
 function Cell({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${className}`}>{children ?? '—'}</td>
+  return <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${className}`}>{children ?? ''}</td>
 }
 
 function Th({ children }: { children: React.ReactNode }) {
@@ -39,7 +41,7 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function StatusPill({ label }: { label: string }) {
-  if (!label) return <span className="text-muted">—</span>
+  if (!label) return null
   const lower = label.toLowerCase()
   const cls =
     lower.includes('שולם') || lower.includes('פעיל')
@@ -94,15 +96,13 @@ export default async function DonorPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const result = await fetchDonorDetail(id)
-  if (!result) notFound()
+  const donor = await getDonorById(id)
+  if (!donor) notFound()
 
-  const { donor, donations, commitments } = result
-
-  const sortedDonations = [...donations].sort((a, b) =>
+  const sortedDonations = [...donor.donations].sort((a, b) =>
     (a.donationDate || '') < (b.donationDate || '') ? 1 : -1
   )
-  const sortedCommitments = [...commitments].sort((a, b) =>
+  const sortedCommitments = [...donor.commitments].sort((a, b) =>
     (a.commitmentDate || '') < (b.commitmentDate || '') ? 1 : -1
   )
 
@@ -110,7 +110,6 @@ export default async function DonorPage({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4">
-      {/* Back */}
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 text-sm text-muted mb-4 hover:text-primary transition-colors"
@@ -121,7 +120,6 @@ export default async function DonorPage({
         חזרה לרשימה
       </Link>
 
-      {/* Profile header */}
       <div className="bg-primary rounded-[--radius-card] p-5 mb-4 text-white">
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -163,7 +161,6 @@ export default async function DonorPage({
         )}
       </div>
 
-      {/* Financial summary */}
       <div className="grid grid-cols-3 gap-3 mb-3">
         <div className="bg-surface rounded-[--radius-card] border border-border p-3 text-center">
           <p className="text-xs text-muted mb-1">סך התחייבויות</p>
@@ -181,7 +178,6 @@ export default async function DonorPage({
         </div>
       </div>
 
-      {/* Year breakdown */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
         <YearStat
           year="2025"
@@ -197,7 +193,6 @@ export default async function DonorPage({
         />
       </div>
 
-      {/* Actions */}
       <div className="flex gap-3 mb-6">
         <Link
           href={`/donations/new?donorId=${donor.id}&donorName=${encodeURIComponent(displayName)}`}
@@ -210,7 +205,6 @@ export default async function DonorPage({
         </button>
       </div>
 
-      {/* Donations table */}
       <section className="mb-6">
         <h2 className="font-bold text-text text-lg mb-3">
           תרומות
@@ -242,7 +236,7 @@ export default async function DonorPage({
                     <tr key={d.id} className="hover:bg-background/60 transition-colors">
                       <Cell>{fDate(d.donationDate)}</Cell>
                       <Cell className="font-semibold text-primary">
-                        {d.amount ? fAmount(d.amount, d.currency) : '—'}
+                        {d.amount ? fAmount(d.amount, d.currency) : ''}
                       </Cell>
                       <Cell>
                         {d.currency && (
@@ -267,7 +261,6 @@ export default async function DonorPage({
         )}
       </section>
 
-      {/* Commitments table */}
       <section>
         <h2 className="font-bold text-text text-lg mb-3">
           התחייבויות
@@ -298,7 +291,7 @@ export default async function DonorPage({
                     <tr key={c.id} className="hover:bg-background/60 transition-colors">
                       <Cell>{fDate(c.commitmentDate)}</Cell>
                       <Cell className="font-semibold text-primary">
-                        {c.amount ? fAmount(c.amount, c.currency) : '—'}
+                        {c.amount ? fAmount(c.amount, c.currency) : ''}
                       </Cell>
                       <Cell>
                         {c.currency && (

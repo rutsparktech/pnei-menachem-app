@@ -1,16 +1,18 @@
 import { Suspense } from 'react'
-import { fetchDonors } from '@/lib/monday'
+import { getAllDonors } from '@/lib/api'
 import KpiCard from '@/components/KpiCard'
 import DonorCard from '@/components/DonorCard'
 import SearchInput from '@/components/SearchInput'
 import RefreshButton from '@/components/RefreshButton'
+
+export const dynamic = 'force-dynamic'
 
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
 
 async function DashboardContent({ q }: { q?: string }) {
-  const donors = await fetchDonors()
+  const donors = await getAllDonors()
   const lastUpdated = new Date().toISOString()
 
   const totalCommitments = donors.reduce((s, d) => s + d.totalCommitments, 0)
@@ -32,7 +34,6 @@ async function DashboardContent({ q }: { q?: string }) {
     <>
       <RefreshButton lastUpdated={lastUpdated} />
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <KpiCard label='סה"כ התחייבויות' value={fUSD(totalCommitments)} accent />
         <KpiCard label='סה"כ תרומות' value={fUSD(totalDonations)} />
@@ -44,7 +45,6 @@ async function DashboardContent({ q }: { q?: string }) {
         />
       </div>
 
-      {/* Donors Grid */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-bold text-text text-lg">תורמים</h2>
         <span className="text-sm text-muted">{filtered.length} רשומות</span>

@@ -36,10 +36,11 @@ export default function NewDonationClient() {
   useEffect(() => {
     fetch('/api/donors')
       .then((r) => r.json())
-      .then((data: Donor[]) => {
-        setDonors(data)
+      .then((data: { donors: Donor[] }) => {
+        const list = data.donors ?? []
+        setDonors(list)
         if (preselectedId) {
-          const d = data.find((d) => d.id === preselectedId)
+          const d = list.find((d) => d.id === preselectedId)
           if (d) setSelectedDonor(d)
         }
       })
@@ -74,7 +75,7 @@ export default function NewDonationClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             donorId: selectedDonor.id,
-            donorName: selectedDonor.name,
+            donorName: selectedDonor.hebrewName || selectedDonor.name,
             ...form,
           }),
         })
@@ -128,7 +129,7 @@ export default function NewDonationClient() {
           <div className="relative">
             <input
               type="text"
-              value={selectedDonor ? selectedDonor.name : donorSearch}
+              value={selectedDonor ? (selectedDonor.hebrewName || selectedDonor.name) : donorSearch}
               onChange={(e) => {
                 setDonorSearch(e.target.value)
                 setSelectedDonor(null)
@@ -162,10 +163,10 @@ export default function NewDonationClient() {
                     key={d.id}
                     type="button"
                     className="w-full text-start px-4 py-2.5 hover:bg-background transition-colors flex items-center justify-between gap-2"
-                    onClick={() => { setSelectedDonor(d); setDonorSearch(d.name); setShowDropdown(false) }}
+                    onClick={() => { setSelectedDonor(d); setDonorSearch(d.hebrewName || d.name); setShowDropdown(false) }}
                   >
                     <div>
-                      <p className="text-sm font-medium text-text">{d.name}</p>
+                      <p className="text-sm font-medium text-text">{d.hebrewName || d.name}</p>
                       <p className="text-xs text-muted">{d.city}</p>
                     </div>
                     <span className="text-xs text-muted">{d.classification}</span>

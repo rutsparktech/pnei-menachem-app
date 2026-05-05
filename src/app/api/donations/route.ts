@@ -1,12 +1,21 @@
-import { fetchDonations, createDonation } from '@/lib/monday'
+import { createDonation } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
 
 export const revalidate = 300
 
-export async function GET(request: NextRequest) {
+function getBaseUrl() {
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return 'http://localhost:3000'
+}
+
+export async function GET() {
   try {
-    const donorId = request.nextUrl.searchParams.get('donorId') ?? undefined
-    const donations = await fetchDonations(donorId)
+    const { donors } = await fetch(`${getBaseUrl()}/api/donors`, {
+      next: { revalidate: 300 },
+    }).then((r) => r.json())
+    const donations = (donors as Array<{ name: string; donations: unknown[] }>).flatMap((d) =>
+      d.donations.map((don) => ({ ...(don as object), donorName: d.name }))
+    )
     return Response.json(donations)
   } catch (err) {
     return Response.json({ error: (err as Error).message }, { status: 500 })

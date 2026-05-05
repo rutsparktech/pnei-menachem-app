@@ -1,4 +1,7 @@
-import { fetchDonations } from '@/lib/monday'
+import { getAllDonors } from '@/lib/api'
+import type { Donation } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
 
 function fAmount(n: number, currency: string) {
   const cur = currency?.toUpperCase()
@@ -16,7 +19,7 @@ function fUSD(n: number) {
 }
 
 function fDate(d: string) {
-  if (!d) return '—'
+  if (!d) return ''
   try {
     return new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(d))
   } catch { return d }
@@ -29,8 +32,10 @@ const FUNDS = [
 ]
 
 export default async function PurposeReport() {
-  const donations = await fetchDonations()
-  const paid = donations.filter((d) => {
+  const donors = await getAllDonors()
+  const allDonations: Donation[] = donors.flatMap((d) => d.donations)
+
+  const paid = allDonations.filter((d) => {
     const ps = d.paymentStatus.toLowerCase()
     return ps.includes('שולם') || (!ps.includes('בוטל') && !ps.includes('ממתין'))
   })
