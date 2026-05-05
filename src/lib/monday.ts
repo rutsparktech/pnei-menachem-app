@@ -8,6 +8,9 @@ const DONATION_BOARD_ID = process.env.MONDAY_DONATIONS_BOARD_ID ?? '5095730934'
 const COMMITMENT_BOARD_ID = process.env.MONDAY_COMMITMENTS_BOARD_ID ?? '5095730933'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const jitter = () => Math.random() * 2000
+
+const RETRY_DELAYS = [5000, 15000, 30000]
 
 async function mondayQuery(query: string, attempt = 0): Promise<any> {
   const token = process.env.MONDAY_API_TOKEN
@@ -24,7 +27,7 @@ async function mondayQuery(query: string, attempt = 0): Promise<any> {
   })
   if (res.status === 429) {
     if (attempt >= 3) throw new Error('Monday API rate limit exceeded after retries')
-    await delay(Math.pow(2, attempt) * 1000)
+    await delay(RETRY_DELAYS[attempt] + jitter())
     return mondayQuery(query, attempt + 1)
   }
   if (!res.ok) throw new Error(`Monday API error: ${res.status}`)
@@ -202,11 +205,11 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   cacheTag('monday-data')
   cacheLife({ revalidate: 300, stale: 300, expire: 3600 })
 
-  const [donorItems, donationItems, commitmentItems] = await Promise.all([
-    fetchAllItems(DONOR_BOARD_ID, DONOR_COLS),
-    delay(300).then(() => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)),
-    delay(600).then(() => fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)),
-  ])
+  const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
+  await delay(500)
+  const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
+  await delay(500)
+  const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
 
   const rawDonationsByDonor = new Map<string, RawItem[]>()
   for (const item of donationItems) {
