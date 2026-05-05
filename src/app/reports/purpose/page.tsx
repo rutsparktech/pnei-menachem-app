@@ -1,8 +1,6 @@
 import { getAllDonors } from '@/lib/api'
 import type { Donation } from '@/lib/types'
 
-export const dynamic = 'force-dynamic'
-
 function fAmount(n: number, currency: string) {
   const cur = currency?.toUpperCase()
   if (!cur || cur === 'USD' || cur === '$') {

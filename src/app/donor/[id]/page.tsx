@@ -4,8 +4,6 @@ import { getDonorById } from '@/lib/api'
 import { ClassificationBadge } from '@/components/StatusBadge'
 import type { Donation, Commitment } from '@/lib/types'
 
-export const dynamic = 'force-dynamic'
-
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
