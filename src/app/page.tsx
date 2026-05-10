@@ -1,8 +1,6 @@
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
 import DashboardClient from './components/DashboardClient'
 
-export const dynamic = 'force-dynamic'
-
 export default async function DashboardPage() {
   let donors: Awaited<ReturnType<typeof fetchAllDonorsWithDetails>>
 
