@@ -205,11 +205,11 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   cacheTag('monday-data')
   cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
 
-  const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
-  await delay(500)
-  const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
-  await delay(500)
-  const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
+  const [donorItems, donationItems, commitmentItems] = await Promise.all([
+    fetchAllItems(DONOR_BOARD_ID, DONOR_COLS),
+    fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
+    fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
+  ])
 
   const rawDonationsByDonor = new Map<string, RawItem[]>()
   for (const item of donationItems) {
@@ -238,6 +238,64 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
       commitments,
     }
   })
+}
+
+export async function fetchDashboardStats() {
+  'use cache'
+  cacheTag('monday-data')
+  cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
+
+  const [donationItems, commitmentItems] = await Promise.all([
+    fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
+    fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
+  ])
+
+  const donations = donationItems.map(mapDonation)
+  const commitments = commitmentItems.map(mapCommitment)
+
+  const totalDonations = donations.reduce((s, d) => s + d.amount, 0)
+  const totalCommitments = commitments.reduce((s, c) => s + c.amount, 0)
+  const balance = Math.max(0, totalCommitments - totalDonations)
+
+  const byYear = (items: Array<{ date: string; amount: number }>, y: number) =>
+    items
+      .filter((i) => i.date && new Date(i.date).getFullYear() === y)
+      .reduce((s, i) => s + i.amount, 0)
+
+  const dmap = donations.map((d) => ({ date: d.donationDate, amount: d.amount }))
+  const cmap = commitments.map((c) => ({ date: c.commitmentDate, amount: c.amount }))
+
+  const byMonth2026 = Array.from({ length: 12 }, (_, i) => {
+    const month = i + 1
+    return donations
+      .filter((d) => {
+        if (!d.donationDate) return false
+        const dt = new Date(d.donationDate)
+        return dt.getFullYear() === 2026 && dt.getMonth() + 1 === month
+      })
+      .reduce((s, d) => s + d.amount, 0)
+  })
+
+  const donorTotals = new Map<string, number>()
+  for (const d of donations) {
+    const id = getDonorIdFromRelation(
+      donationItems.find((i) => i.id === d.id)?.column_values ?? [],
+      'board_relation_mm00vj7d'
+    )
+    if (id) donorTotals.set(id, (donorTotals.get(id) ?? 0) + d.amount)
+  }
+
+  return {
+    totalDonations,
+    totalCommitments,
+    balance,
+    donations2025: byYear(dmap, 2025),
+    donations2026: byYear(dmap, 2026),
+    commitments2025: byYear(cmap, 2025),
+    commitments2026: byYear(cmap, 2026),
+    byMonth2026,
+    donorTotals: Object.fromEntries(donorTotals),
+  }
 }
 
 export async function createDonation(input: NewDonationInput): Promise<string> {
