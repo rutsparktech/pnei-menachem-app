@@ -6,6 +6,8 @@ import DonorCard from '@/components/DonorCard'
 import SearchInput from '@/components/SearchInput'
 import RefreshButton from '@/components/RefreshButton'
 
+export const dynamic = 'force-dynamic'
+
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
