@@ -15,16 +15,26 @@ const RETRY_DELAYS = [5000, 15000, 30000]
 async function mondayQuery(query: string, attempt = 0): Promise<any> {
   const token = process.env.MONDAY_API_TOKEN
   if (!token) throw new Error('MONDAY_API_TOKEN not configured')
-  const res = await fetch(MONDAY_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token,
-      'API-Version': '2025-01',
-    },
-    body: JSON.stringify({ query }),
-    cache: 'no-store',
-  })
+
+  let res: Response
+  try {
+    res = await fetch(MONDAY_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: token,
+        'API-Version': '2025-01',
+      },
+      body: JSON.stringify({ query }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30000),
+    })
+  } catch (err) {
+    if (attempt >= 3) throw err
+    await delay(RETRY_DELAYS[attempt] + jitter())
+    return mondayQuery(query, attempt + 1)
+  }
+
   if (res.status === 429) {
     if (attempt >= 3) throw new Error('Monday API rate limit exceeded after retries')
     await delay(RETRY_DELAYS[attempt] + jitter())
@@ -205,11 +215,9 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   cacheTag('monday-data')
   cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
 
-  const [donorItems, donationItems, commitmentItems] = await Promise.all([
-    fetchAllItems(DONOR_BOARD_ID, DONOR_COLS),
-    fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
-    fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
-  ])
+  const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
+  const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
+  const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
 
   const rawDonationsByDonor = new Map<string, RawItem[]>()
   for (const item of donationItems) {
@@ -245,10 +253,8 @@ export async function fetchDashboardStats() {
   cacheTag('monday-data')
   cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
 
-  const [donationItems, commitmentItems] = await Promise.all([
-    fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
-    fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
-  ])
+  const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
+  const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
 
   const donations = donationItems.map(mapDonation)
   const commitments = commitmentItems.map(mapCommitment)
