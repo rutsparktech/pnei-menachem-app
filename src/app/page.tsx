@@ -1,7 +1,10 @@
+import { connection } from 'next/server'
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
 import DashboardClient from './components/DashboardClient'
 
 export default async function DashboardPage() {
+  await connection()
+
   let donors: Awaited<ReturnType<typeof fetchAllDonorsWithDetails>>
 
   try {
