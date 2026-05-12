@@ -1,3 +1,4 @@
+import { connection } from 'next/server'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { getAllDonors } from '@/lib/api'
@@ -70,6 +71,7 @@ export default async function Dashboard({
 }: {
   searchParams: Promise<{ q?: string }>
 }) {
+  await connection()
   const { q } = await searchParams
 
   return (

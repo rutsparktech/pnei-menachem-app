@@ -1,3 +1,4 @@
+import { connection } from 'next/server'
 import { Suspense } from 'react'
 import { getAllDonors } from '@/lib/api'
 import type { Donation } from '@/lib/types'
@@ -31,6 +32,7 @@ const FUNDS = [
 ]
 
 async function PurposeContent() {
+  await connection()
   const donors = await getAllDonors()
   const allDonations: Donation[] = donors.flatMap((d) => d.donations)
 
