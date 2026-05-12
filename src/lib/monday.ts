@@ -1,4 +1,4 @@
-import { cacheLife, cacheTag } from 'next/cache'
+import { unstable_cache } from 'next/cache'
 import type { Donor, Donation, Commitment, DonorWithDetails, NewDonationInput } from './types'
 
 const MONDAY_API_URL = 'https://api.monday.com/v2'
@@ -132,6 +132,17 @@ const COMMITMENT_COLS = [
   'color_mm2nkdzv', 'text_mkzy8r2b',
 ].map((id) => `"${id}"`).join(', ')
 
+export const getCachedMondayData = unstable_cache(
+  async () => {
+    const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
+    const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
+    const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
+    return { donorItems, donationItems, commitmentItems }
+  },
+  ['monday-all-boards'],
+  { revalidate: 300, tags: ['monday-data'] }
+)
+
 function mapDonation(item: RawItem): Donation {
   const cv = item.column_values
   return {
@@ -211,13 +222,7 @@ function mapDonorWithStats(item: RawItem, donations: Donation[], commitments: Co
 }
 
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
-  'use cache'
-  cacheTag('monday-data')
-  cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
-
-  const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
-  const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
-  const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
+  const { donorItems, donationItems, commitmentItems } = await getCachedMondayData()
 
   const rawDonationsByDonor = new Map<string, RawItem[]>()
   for (const item of donationItems) {
@@ -249,12 +254,7 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
 }
 
 export async function fetchDashboardStats() {
-  'use cache'
-  cacheTag('monday-data')
-  cacheLife({ revalidate: 270, stale: 270, expire: 3600 })
-
-  const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
-  const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
+  const { donationItems, commitmentItems } = await getCachedMondayData()
 
   const donations = donationItems.map(mapDonation)
   const commitments = commitmentItems.map(mapCommitment)
