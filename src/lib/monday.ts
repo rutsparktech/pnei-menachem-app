@@ -140,7 +140,7 @@ export const getCachedMondayData = unstable_cache(
     return { donorItems, donationItems, commitmentItems }
   },
   ['monday-all-boards'],
-  { revalidate: 300, tags: ['monday-data'] }
+  { revalidate: 3600, tags: ['monday-data'] }
 )
 
 function mapDonation(item: RawItem): Donation {
