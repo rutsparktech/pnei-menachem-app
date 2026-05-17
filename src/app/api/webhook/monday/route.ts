@@ -8,6 +8,6 @@ export async function POST(req: NextRequest) {
   }
   const { event } = body
   console.log('Monday webhook:', event?.type, event?.boardId)
-  revalidateTag('monday-data')
+  revalidateTag('monday-data', 'max')
   return Response.json({ ok: true })
 }
