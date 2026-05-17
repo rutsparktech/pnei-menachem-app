@@ -139,14 +139,21 @@ const COMMITMENT_COLS = [
   'color_mm2nkdzv', 'text_mkzy8r2b',
 ].map((id) => `"${id}"`).join(', ')
 
-export const getCachedMondayData = unstable_cache(
-  async () => {
-    const donorItems = await fetchAllItems(DONOR_BOARD_ID, DONOR_COLS)
-    const donationItems = await fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
-    const commitmentItems = await fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
-    return { donorItems, donationItems, commitmentItems }
-  },
-  ['monday-all-boards'],
+export const getCachedDonors = unstable_cache(
+  () => fetchAllItems(DONOR_BOARD_ID, DONOR_COLS),
+  ['monday-donors'],
+  { revalidate: 3600, tags: ['monday-data'] }
+)
+
+export const getCachedDonations = unstable_cache(
+  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
+  ['monday-donations'],
+  { revalidate: 3600, tags: ['monday-data'] }
+)
+
+export const getCachedCommitments = unstable_cache(
+  () => fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
+  ['monday-commitments'],
   { revalidate: 3600, tags: ['monday-data'] }
 )
 
@@ -229,7 +236,11 @@ function mapDonorWithStats(item: RawItem, donations: Donation[], commitments: Co
 }
 
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
-  const { donorItems, donationItems, commitmentItems } = await getCachedMondayData()
+  const [donorItems, donationItems, commitmentItems] = await Promise.all([
+    getCachedDonors(),
+    getCachedDonations(),
+    getCachedCommitments(),
+  ])
 
   const rawDonationsByDonor = new Map<string, RawItem[]>()
   for (const item of donationItems) {
@@ -261,7 +272,10 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
 }
 
 export async function fetchDashboardStats() {
-  const { donationItems, commitmentItems } = await getCachedMondayData()
+  const [donationItems, commitmentItems] = await Promise.all([
+    getCachedDonations(),
+    getCachedCommitments(),
+  ])
 
   const donations = donationItems.map(mapDonation)
   const commitments = commitmentItems.map(mapCommitment)
