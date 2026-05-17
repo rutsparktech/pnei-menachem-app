@@ -1,13 +1,13 @@
 import { revalidateTag } from 'next/cache'
-import type { NextRequest } from 'next/server'
+import { NextRequest } from 'next/server'
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    if (body.challenge) return Response.json({ challenge: body.challenge })
-    revalidateTag('monday-data', 'max')
-    return Response.json({ ok: true })
-  } catch (err) {
-    return Response.json({ error: (err as Error).message }, { status: 500 })
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  if (body.challenge) {
+    return Response.json({ challenge: body.challenge })
   }
+  const { event } = body
+  console.log('Monday webhook:', event?.type, event?.boardId)
+  revalidateTag('monday-data')
+  return Response.json({ ok: true })
 }

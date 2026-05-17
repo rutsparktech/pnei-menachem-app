@@ -12,7 +12,11 @@ const jitter = () => Math.random() * 2000
 
 const RETRY_DELAYS = [5000, 15000, 30000]
 
-async function mondayQuery(query: string, attempt = 0): Promise<any> {
+async function mondayQuery(
+  query: string,
+  variables?: Record<string, unknown>,
+  attempt = 0
+): Promise<any> {
   const token = process.env.MONDAY_API_TOKEN
   if (!token) throw new Error('MONDAY_API_TOKEN not configured')
 
@@ -23,22 +27,22 @@ async function mondayQuery(query: string, attempt = 0): Promise<any> {
       headers: {
         'Content-Type': 'application/json',
         Authorization: token,
-        'API-Version': '2025-01',
+        'API-Version': '2025-04',
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, variables }),
       cache: 'no-store',
       signal: AbortSignal.timeout(30000),
     })
   } catch (err) {
     if (attempt >= 3) throw err
     await delay(RETRY_DELAYS[attempt] + jitter())
-    return mondayQuery(query, attempt + 1)
+    return mondayQuery(query, variables, attempt + 1)
   }
 
   if (res.status === 429) {
     if (attempt >= 3) throw new Error('Monday API rate limit exceeded after retries')
     await delay(RETRY_DELAYS[attempt] + jitter())
-    return mondayQuery(query, attempt + 1)
+    return mondayQuery(query, variables, attempt + 1)
   }
   if (!res.ok) throw new Error(`Monday API error: ${res.status}`)
   const json = await res.json()
@@ -97,16 +101,19 @@ async function fetchAllItems(boardId: string, colIdList: string): Promise<RawIte
   let cursor: string | null = page.cursor ?? null
 
   while (cursor) {
-    const next = await mondayQuery(`{
-      next_items_page(limit: 200, cursor: "${cursor}") {
-        cursor
-        items {
-          id
-          name
-          column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} }
+    const next = await mondayQuery(
+      `query NextPage($cursor: String!, $limit: Int!) {
+        next_items_page(limit: $limit, cursor: $cursor) {
+          cursor
+          items {
+            id
+            name
+            column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} }
+          }
         }
-      }
-    }`)
+      }`,
+      { cursor, limit: 200 }
+    )
     const np = next.next_items_page ?? {}
     items.push(...(np.items ?? []))
     cursor = np.cursor ?? null
@@ -305,22 +312,22 @@ export async function fetchDashboardStats() {
 }
 
 export async function createDonation(input: NewDonationInput): Promise<string> {
-  const columnValues = JSON.stringify({
-    numeric_mm023gpx: input.amount.toString(),
-    color_mm02k8mn: input.currency,
-    date_mm0250jx: input.date,
-    color_mm2m6j4a: input.purpose,
-    color_mm024cp9: input.paymentMethod,
-    text_mkzyftqz: input.notes,
-  }).replace(/"/g, '\\"')
-
-  const result = await mondayQuery(`mutation {
-    create_item(
-      board_id: ${DONATION_BOARD_ID},
-      item_name: "${input.donorName} - ${input.date}",
-      column_values: "${columnValues}"
-    ) { id }
-  }`)
-
+  const result = await mondayQuery(
+    `mutation CreateDonation($boardId: ID!, $name: String!, $colVals: JSON!) {
+      create_item(board_id: $boardId, item_name: $name, column_values: $colVals) { id }
+    }`,
+    {
+      boardId: DONATION_BOARD_ID,
+      name: `${input.donorName} - ${input.date}`,
+      colVals: JSON.stringify({
+        numeric_mm023gpx: input.amount.toString(),
+        color_mm02k8mn: input.currency,
+        date_mm0250jx: input.date,
+        color_mm2m6j4a: input.purpose,
+        color_mm024cp9: input.paymentMethod,
+        text_mkzyftqz: input.notes,
+      }),
+    }
+  )
   return result.create_item.id
 }
