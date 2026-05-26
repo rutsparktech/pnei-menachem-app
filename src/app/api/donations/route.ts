@@ -1,7 +1,9 @@
+import { connection } from 'next/server'
 import { createDonation, fetchAllDonorsWithDetails } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
 
 export async function GET() {
+  await connection()
   try {
     const donors = await fetchAllDonorsWithDetails()
     const donations = donors.flatMap((d) =>
@@ -14,6 +16,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  await connection()
   try {
     const body = await request.json()
     const { donorId, donorName, amount, currency, date, purpose, paymentMethod, notes } = body

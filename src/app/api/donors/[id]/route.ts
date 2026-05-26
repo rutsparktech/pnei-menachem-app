@@ -1,3 +1,4 @@
+import { connection } from 'next/server'
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
 import type { NextRequest } from 'next/server'
 
@@ -5,6 +6,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection()
   try {
     const { id } = await params
     const donors = await fetchAllDonorsWithDetails()

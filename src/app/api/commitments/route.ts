@@ -1,6 +1,8 @@
+import { connection } from 'next/server'
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
 
 export async function GET() {
+  await connection()
   try {
     const donors = await fetchAllDonorsWithDetails()
     const commitments = donors.flatMap((d) =>

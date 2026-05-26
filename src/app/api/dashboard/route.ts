@@ -1,7 +1,8 @@
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
-import { NextResponse } from 'next/server'
+import { NextResponse, connection } from 'next/server'
 
 export async function GET() {
+  await connection()
   try {
     const donors = await fetchAllDonorsWithDetails()
 
