@@ -1,5 +1,6 @@
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
 import { NextResponse, connection } from 'next/server'
+import { apiError } from '@/lib/api-error'
 
 export async function GET() {
   await connection()
@@ -51,6 +52,6 @@ export async function GET() {
       lastUpdated: new Date().toISOString(),
     })
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+    return apiError(err, 'GET /api/dashboard')
   }
 }

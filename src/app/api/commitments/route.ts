@@ -1,5 +1,6 @@
 import { connection } from 'next/server'
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
+import { apiError } from '@/lib/api-error'
 
 export async function GET() {
   await connection()
@@ -10,6 +11,6 @@ export async function GET() {
     )
     return Response.json(commitments)
   } catch (err) {
-    return Response.json({ error: (err as Error).message }, { status: 500 })
+    return apiError(err, 'GET /api/commitments')
   }
 }
