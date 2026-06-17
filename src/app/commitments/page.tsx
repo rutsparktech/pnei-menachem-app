@@ -1,12 +1,12 @@
 import { Suspense } from 'react'
-import { connection } from 'next/server'
 import Link from 'next/link'
 import { getDataBundle } from '@/lib/monday'
 import { usd, orderDesignations, designationColor } from '@/lib/format'
 import CommitmentsClient from './CommitmentsClient'
 
+export const revalidate = 3600
+
 async function CommitmentsContent() {
-  await connection()
   const { commitments } = await getDataBundle()
 
   type CommitmentRow = {
