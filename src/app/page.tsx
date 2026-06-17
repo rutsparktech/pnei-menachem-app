@@ -1,10 +1,9 @@
-import { connection } from 'next/server'
 import { getDataBundle } from '@/lib/monday'
 import HomeClient from './components/HomeClient'
 
-export default async function HomePage() {
-  await connection()
+export const revalidate = 3600
 
+export default async function HomePage() {
   let bundle
   try {
     bundle = await getDataBundle()
