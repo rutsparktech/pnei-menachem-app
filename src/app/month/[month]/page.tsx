@@ -1,13 +1,13 @@
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDataBundle } from '@/lib/monday'
 import { MONTHS_HE, usd, orderDesignations, designationColor } from '@/lib/format'
 import MonthClient from './MonthClient'
 
-export const revalidate = 3600
-
 async function MonthContent({ month }: { month: string }) {
+  await connection()
   const [yearStr, monthStr] = month.split('-')
   const year = parseInt(yearStr, 10)
   const monthIndex = parseInt(monthStr, 10) - 1
@@ -17,7 +17,7 @@ async function MonthContent({ month }: { month: string }) {
   const { donations } = await getDataBundle()
 
   const monthDonations = donations.filter((d) => {
-    if (!d.date || d.paymentStatus === '\u05d1\u05d5\u05d8\u05dc') return false
+    if (!d.date || d.paymentStatus === 'בוטל') return false
     const dt = new Date(d.date)
     return dt.getFullYear() === year && dt.getMonth() === monthIndex
   })
@@ -29,7 +29,7 @@ async function MonthContent({ month }: { month: string }) {
 
   const map = new Map<string, DonorRow[]>()
   for (const d of monthDonations) {
-    const key = d.designation || '\u05e9\u05d5\u05e0\u05d5\u05ea'
+    const key = d.designation || 'שונות'
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push({
       donorId: d.donorId || '', donorName: d.donorName,
@@ -40,10 +40,8 @@ async function MonthContent({ month }: { month: string }) {
   const groups = orderDesignations([...map.keys()]).map((designation) => {
     const donors = map.get(designation)!.sort((a, b) => b.usdAmt - a.usdAmt)
     return {
-      designation,
-      color: designationColor(designation),
-      donors,
-      total: donors.reduce((s, d) => s + d.usdAmt, 0),
+      designation, color: designationColor(designation),
+      donors, total: donors.reduce((s, d) => s + d.usdAmt, 0),
     }
   })
 
@@ -59,7 +57,7 @@ async function MonthContent({ month }: { month: string }) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 rotate-180">
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
-        \u05d7\u05d6\u05e8\u05d4 \u05dc\u05d3\u05e9\u05d1\u05d5\u05e8\u05d3
+        חזרה לדשבורד
       </Link>
 
       <div className="mb-5">
@@ -69,10 +67,10 @@ async function MonthContent({ month }: { month: string }) {
           {totalFuture > 0 && (
             <span className="text-muted flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-[#e0cfa0]" />
-              {usd(totalFuture)} \u05e6\u05e4\u05d5\u05d9
+              {usd(totalFuture)} עתידי
             </span>
           )}
-          <span className="text-muted">· {monthDonations.length} \u05ea\u05e8\u05d5\u05de\u05d5\u05ea</span>
+          <span className="text-muted">· {monthDonations.length} תרומות</span>
         </div>
       </div>
 
@@ -89,7 +87,9 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
         <div dir="rtl" className="max-w-3xl mx-auto px-4 py-4 animate-pulse space-y-3">
           <div className="h-5 w-24 bg-surface rounded" />
           <div className="h-10 w-40 bg-surface rounded" />
-          {[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-surface rounded-xl" />)}
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 bg-surface rounded-xl" />
+          ))}
         </div>
       }
     >
