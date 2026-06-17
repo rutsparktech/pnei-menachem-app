@@ -1,46 +1,50 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getDonorById } from '@/lib/api'
+import { getDonorHeader, getDonorById } from '@/lib/monday'
 import { ClassificationBadge } from '@/components/StatusBadge'
 import FinancialCard from '@/components/FinancialCard'
 import { usd, formatDate } from '@/lib/format'
 
-function DonorPageSkeleton() {
+export const revalidate = 3600
+
+// ─── Skeletons ────────────────────────────────────────────────────────────────
+
+function HeaderSkeleton() {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-4 animate-pulse">
+    <div className="animate-pulse">
       <div className="h-5 w-28 bg-surface rounded mb-4" />
       <div className="bg-surface rounded-[--radius-card] h-32 mb-4" />
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-surface rounded-[--radius-card] h-16" />
-        ))}
-      </div>
-      <div className="bg-surface rounded-xl h-10 mb-5" />
-      <div className="space-y-3">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-surface rounded-xl h-28" />
-        ))}
-      </div>
     </div>
   )
 }
 
-async function DonorContent({ id }: { id: string }) {
-  const donor = await getDonorById(id)
+function FinancialsSkeleton() {
+  return (
+    <div className="animate-pulse space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="bg-surface rounded-[--radius-card] h-16" />
+        ))}
+      </div>
+      <div className="bg-surface rounded-xl h-10" />
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="bg-surface rounded-xl h-28" />
+      ))}
+    </div>
+  )
+}
+
+// ─── Header — loads fast (donors cache only) ──────────────────────────────────
+
+async function DonorHeader({ id }: { id: string }) {
+  const donor = await getDonorHeader(id)
   if (!donor) notFound()
 
   const displayName = donor.hebrewName || donor.name
 
-  const sortedCommitments = [...donor.commitments].sort((a, b) =>
-    (a.date || '') < (b.date || '') ? 1 : -1
-  )
-  const sortedDonations = [...donor.donations].sort((a, b) =>
-    (a.date || '') < (b.date || '') ? 1 : -1
-  )
-
   return (
-    <div className="max-w-4xl mx-auto px-4 py-4">
+    <>
       <Link
         href="/donors"
         className="inline-flex items-center gap-1.5 text-sm text-muted mb-4 hover:text-primary transition-colors"
@@ -51,7 +55,6 @@ async function DonorContent({ id }: { id: string }) {
         חזרה לרשימה
       </Link>
 
-      {/* ── Header ───────────────────────────────────────────────── */}
       <div className="bg-primary rounded-[--radius-card] p-5 mb-4 text-white">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -86,8 +89,26 @@ async function DonorContent({ id }: { id: string }) {
           <p className="text-white/50 text-xs mt-3">עודכן לאחרונה: {formatDate(donor.lastUpdated)}</p>
         )}
       </div>
+    </>
+  )
+}
 
-      {/* ── Summary KPIs ─────────────────────────────────────────── */}
+// ─── Financials — KPIs + FinancialCard (all caches) ─────────────────────────
+
+async function DonorFinancials({ id }: { id: string }) {
+  const donor = await getDonorById(id)
+  if (!donor) return null
+
+  const displayName = donor.hebrewName || donor.name
+  const sortedCommitments = [...donor.commitments].sort((a, b) =>
+    (a.date || '') < (b.date || '') ? 1 : -1
+  )
+  const sortedDonations = [...donor.donations].sort((a, b) =>
+    (a.date || '') < (b.date || '') ? 1 : -1
+  )
+
+  return (
+    <>
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-surface rounded-[--radius-card] border border-border p-3 text-center">
           <p className="text-[10px] text-muted mb-1">התחייבויות</p>
@@ -106,7 +127,6 @@ async function DonorContent({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ── Add donation ─────────────────────────────────────────── */}
       <Link
         href={`/donations/new?donorId=${donor.id}&donorName=${encodeURIComponent(displayName)}`}
         className="block w-full bg-primary text-white rounded-xl py-2.5 text-sm font-semibold text-center hover:bg-primary-hover transition-colors mb-6"
@@ -114,14 +134,15 @@ async function DonorContent({ id }: { id: string }) {
         + הוספת תרומה
       </Link>
 
-      {/* ── Financial card (client, interactive) ─────────────────── */}
       <FinancialCard
         commitments={sortedCommitments}
         donations={sortedDonations}
       />
-    </div>
+    </>
   )
 }
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default async function DonorPage({
   params,
@@ -130,8 +151,14 @@ export default async function DonorPage({
 }) {
   const { id } = await params
   return (
-    <Suspense fallback={<DonorPageSkeleton />}>
-      <DonorContent id={id} />
-    </Suspense>
+    <div className="max-w-4xl mx-auto px-4 py-4 pb-24">
+      <Suspense fallback={<HeaderSkeleton />}>
+        <DonorHeader id={id} />
+      </Suspense>
+
+      <Suspense fallback={<FinancialsSkeleton />}>
+        <DonorFinancials id={id} />
+      </Suspense>
+    </div>
   )
 }
