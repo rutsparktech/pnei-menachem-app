@@ -127,13 +127,6 @@ async function DonorFinancials({ id }: { id: string }) {
         </div>
       </div>
 
-      <Link
-        href={`/donations/new?donorId=${donor.id}&donorName=${encodeURIComponent(displayName)}`}
-        className="block w-full bg-primary text-white rounded-xl py-2.5 text-sm font-semibold text-center hover:bg-primary-hover transition-colors mb-6"
-      >
-        + הוספת תרומה
-      </Link>
-
       <FinancialCard
         commitments={sortedCommitments}
         donations={sortedDonations}
