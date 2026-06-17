@@ -85,7 +85,7 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>, a
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: token, 'API-Version': '2025-04' },
       body: JSON.stringify({ query, variables }),
-      next: { revalidate: 3600, tags: ['monday-data'] },
+      cache: 'no-store',
       signal: AbortSignal.timeout(30000),
     })
   } catch (err) {
@@ -409,6 +409,12 @@ export async function getDataBundle(): Promise<DataBundle> {
 export async function getDonorById(id: string): Promise<DonorWithDetails | null> {
   const { donors } = await getDataBundle()
   return donors.find((d) => d.id === id) ?? null
+}
+
+export async function getDonorHeader(id: string): Promise<Donor | null> {
+  const donors = await getRawDonors()
+  const item = donors.find((d) => d.id === id)
+  return item ? mapDonor(item) : null
 }
 
 // ----------------------------------------------------------------------------
