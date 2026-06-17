@@ -1,12 +1,12 @@
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import Link from 'next/link'
 import { getDataBundle } from '@/lib/monday'
 import { usd, orderDesignations, designationColor } from '@/lib/format'
 import CommitmentsClient from './CommitmentsClient'
 
-export const revalidate = 3600
-
 async function CommitmentsContent() {
+  await connection()
   const { commitments } = await getDataBundle()
 
   type CommitmentRow = {
@@ -52,18 +52,21 @@ async function CommitmentsContent() {
       </Link>
 
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-bl from-[#6c2d45] to-[#4f1f33] text-white p-5 mb-5 shadow-lg">
-        <p className="text-white/70 text-sm">סך כל ההתחייבויות</p>
+        <p className="text-white/70 text-sm">סך כל התחייבויות</p>
         <p className="text-4xl font-extrabold mt-1 tracking-tight">{usd(grandTotal)}</p>
         <div className="flex items-center gap-5 mt-3 text-sm">
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#d4af37]" />
+            <span className="w-4 h-2.5 rounded-full bg-[#d4af37]" />
             שולם <b>{usd(grandPaid)}</b>
           </span>
           <span className="text-white/70">נשאר <b>{usd(grandRemaining)}</b></span>
           <span className="font-bold text-[#d4af37]">{grandPct}%</span>
         </div>
-        <div className="h-2 bg-white/20 rounded-full mt-3">
-          <div className="h-full bg-[#d4af37] rounded-full" style={{ width: `${grandPct}%` }} />
+        <div className="rounded-full mt-3" style={{ background: 'rgba(255,255,255,0.2)', height: 8 }}>
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${grandPct}%`, background: '#d4af37' }}
+          />
         </div>
       </div>
 
