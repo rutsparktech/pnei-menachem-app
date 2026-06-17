@@ -1,13 +1,13 @@
 import { Suspense } from 'react'
-import { connection } from 'next/server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDataBundle } from '@/lib/monday'
 import { MONTHS_HE, usd, orderDesignations, designationColor } from '@/lib/format'
 import MonthClient from './MonthClient'
 
+export const revalidate = 3600
+
 async function MonthContent({ month }: { month: string }) {
-  await connection()
   const [yearStr, monthStr] = month.split('-')
   const year = parseInt(yearStr, 10)
   const monthIndex = parseInt(monthStr, 10) - 1
