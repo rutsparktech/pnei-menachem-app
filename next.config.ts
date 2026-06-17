@@ -30,10 +30,6 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   reactStrictMode: true,
-  cacheComponents: true,
-  turbopack: {
-    root: __dirname,
-  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
