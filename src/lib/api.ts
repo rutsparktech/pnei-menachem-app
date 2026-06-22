@@ -1,11 +1,10 @@
-import { fetchAllDonorsWithDetails } from './monday'
-import type { DonorWithDetails } from './types'
+import { getDonorList, getDonorDetail } from './monday'
+import type { Donor, DonorWithDetails } from './types'
 
-export async function getAllDonors(): Promise<DonorWithDetails[]> {
-  return fetchAllDonorsWithDetails()
+export async function getAllDonors(): Promise<Donor[]> {
+  return getDonorList()
 }
 
 export async function getDonorById(id: string): Promise<DonorWithDetails | null> {
-  const donors = await fetchAllDonorsWithDetails()
-  return donors.find((d) => d.id === id) ?? null
+  return getDonorDetail(id)
 }
