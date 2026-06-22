@@ -106,6 +106,8 @@ function DonorPageSkeleton() {
 }
 
 async function DonorContent({ id }: { id: string }) {
+  // Monday item IDs are numeric — reject anything else before hitting the API
+  if (!/^\d{5,15}$/.test(id)) notFound()
   const donor = await getDonorDetail(id)
   if (!donor) notFound()
 
