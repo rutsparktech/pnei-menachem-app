@@ -28,8 +28,8 @@ const C = {
     email: 'email_mm00t0t3',
     classification: 'dropdown_mm2ctcs8',
     currency: 'color_mm00jmzh',
-    photo: 'file_mkzyy76s',
     lastUpdated: 'pulse_updated_mm00a3ms',
+    // photo is fetched via item.assets { public_url }, not column_values
   },
   donation: {
     donorRel: 'board_relation_mm00vj7d',
@@ -109,35 +109,103 @@ type RawItem = { id: string; name: string; updated_at?: string; column_values: R
 
 const COL_FRAGMENT = `id text value ... on BoardRelationValue { linked_items { id } }`
 
-async function fetchAllItems(boardId: string, colIdList: string, extraItemFields = ''): Promise<RawItem[]> {
-  const itemBlock = `
-    id
-    name
-    ${extraItemFields}
-    column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} }`
+// ----------------------------------------------------------------------------
+// Column ID lists built once at module level
+// ----------------------------------------------------------------------------
+const DONOR_COLS = Object.values(C.donor).map((id) => `"${id}"`).join(', ')
+const DONATION_COLS = Object.values(C.donation).map((id) => `"${id}"`).join(', ')
+const COMMITMENT_COLS = Object.values(C.commitment).filter(Boolean).map((id) => `"${id}"`).join(', ')
+const RATE_COLS = Object.values(C.rate).map((id) => `"${id}"`).join(', ')
 
-  const initial = await mondayQuery(`{
-    boards(ids: [${boardId}]) {
-      items_page(limit: 500) { cursor items { ${itemBlock} } }
-    }
-  }`)
-  const page = initial.boards[0]?.items_page ?? {}
-  const items: RawItem[] = [...(page.items ?? [])]
-  let cursor: string | null = page.cursor ?? null
+// Item block templates — reused in both initial queries and pagination
+const DONOR_ITEM_BLOCK = `id name updated_at assets { public_url } column_values(ids: [${DONOR_COLS}]) { ${COL_FRAGMENT} }`
+const DONATION_ITEM_BLOCK = `id name column_values(ids: [${DONATION_COLS}]) { ${COL_FRAGMENT} }`
+const COMMITMENT_ITEM_BLOCK = `id name column_values(ids: [${COMMITMENT_COLS}]) { ${COL_FRAGMENT} }`
+const RATE_ITEM_BLOCK = `id name column_values(ids: [${RATE_COLS}]) { ${COL_FRAGMENT} }`
 
-  while (cursor) {
+// ----------------------------------------------------------------------------
+// Pagination helper — follows cursor until exhausted
+// ----------------------------------------------------------------------------
+async function paginateCursor(cursor: string, itemBlock: string): Promise<RawItem[]> {
+  const items: RawItem[] = []
+  let cur: string | null = cursor
+  while (cur) {
     const next = await mondayQuery(
-      `query NextPage($cursor: String!, $limit: Int!) {
+      `query($cursor: String!, $limit: Int!) {
         next_items_page(limit: $limit, cursor: $cursor) { cursor items { ${itemBlock} } }
       }`,
-      { cursor, limit: 500 }
+      { cursor: cur, limit: 500 }
     )
     const np = next.next_items_page ?? {}
     items.push(...(np.items ?? []))
-    cursor = np.cursor ?? null
+    cur = np.cursor ?? null
   }
   return items
 }
+
+// ----------------------------------------------------------------------------
+// Donors — separate cache to support fast streaming header on donor page
+// ----------------------------------------------------------------------------
+async function fetchDonors(): Promise<RawItem[]> {
+  const data = await mondayQuery(`{
+    boards(ids: [${DONOR_BOARD_ID}]) {
+      items_page(limit: 500) { cursor items { ${DONOR_ITEM_BLOCK} } }
+    }
+  }`)
+  const page = data.boards[0]?.items_page ?? {}
+  const extra = page.cursor ? await paginateCursor(page.cursor, DONOR_ITEM_BLOCK) : []
+  return [...(page.items ?? []), ...extra]
+}
+
+const getRawDonors = unstable_cache(
+  fetchDonors,
+  ['pm-donors'],
+  { revalidate: 3600, tags: ['monday-data'] }
+)
+
+// ----------------------------------------------------------------------------
+// Financials — donations + commitments + rates in a single batch query.
+// 3 boards → 1 HTTP round-trip instead of 3 separate requests.
+// ----------------------------------------------------------------------------
+async function fetchFinancialsBatch(): Promise<{
+  donationItems: RawItem[]
+  commitmentItems: RawItem[]
+  rateItems: RawItem[]
+}> {
+  const data = await mondayQuery(`{
+    donations: boards(ids: [${DONATION_BOARD_ID}]) {
+      items_page(limit: 500) { cursor items { ${DONATION_ITEM_BLOCK} } }
+    }
+    commitments: boards(ids: [${COMMITMENT_BOARD_ID}]) {
+      items_page(limit: 500) { cursor items { ${COMMITMENT_ITEM_BLOCK} } }
+    }
+    rates: boards(ids: [${RATES_BOARD_ID}]) {
+      items_page(limit: 500) { cursor items { ${RATE_ITEM_BLOCK} } }
+    }
+  }`)
+
+  const donationPage = data.donations[0]?.items_page ?? {}
+  const commitmentPage = data.commitments[0]?.items_page ?? {}
+  const ratePage = data.rates[0]?.items_page ?? {}
+
+  const [donationExtra, commitmentExtra, rateExtra] = await Promise.all([
+    donationPage.cursor ? paginateCursor(donationPage.cursor, DONATION_ITEM_BLOCK) : Promise.resolve([]),
+    commitmentPage.cursor ? paginateCursor(commitmentPage.cursor, COMMITMENT_ITEM_BLOCK) : Promise.resolve([]),
+    ratePage.cursor ? paginateCursor(ratePage.cursor, RATE_ITEM_BLOCK) : Promise.resolve([]),
+  ])
+
+  return {
+    donationItems: [...(donationPage.items ?? []), ...donationExtra],
+    commitmentItems: [...(commitmentPage.items ?? []), ...commitmentExtra],
+    rateItems: [...(ratePage.items ?? []), ...rateExtra],
+  }
+}
+
+const getFinancialsRaw = unstable_cache(
+  fetchFinancialsBatch,
+  ['pm-financials'],
+  { revalidate: 3600, tags: ['monday-data'] }
+)
 
 // ----------------------------------------------------------------------------
 // Small helpers
@@ -185,31 +253,6 @@ function normalizeDesignation(raw: string): Designation {
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
-
-// ----------------------------------------------------------------------------
-// Cached raw fetches
-// ----------------------------------------------------------------------------
-const DONOR_COLS = Object.values(C.donor).map((id) => `"${id}"`).join(', ')
-const DONATION_COLS = Object.values(C.donation).map((id) => `"${id}"`).join(', ')
-const COMMITMENT_COLS = Object.values(C.commitment).filter(Boolean).map((id) => `"${id}"`).join(', ')
-const RATE_COLS = Object.values(C.rate).map((id) => `"${id}"`).join(', ')
-
-const getRawDonors = unstable_cache(
-  () => fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, `updated_at assets { public_url }`),
-  ['pm-donors'], { revalidate: 3600, tags: ['monday-data'] }
-)
-const getRawDonations = unstable_cache(
-  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
-  ['pm-donations'], { revalidate: 3600, tags: ['monday-data'] }
-)
-const getRawCommitments = unstable_cache(
-  () => fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
-  ['pm-commitments'], { revalidate: 3600, tags: ['monday-data'] }
-)
-const getRawRates = unstable_cache(
-  () => fetchAllItems(RATES_BOARD_ID, RATE_COLS),
-  ['pm-rates'], { revalidate: 3600, tags: ['monday-data'] }
-)
 
 // ----------------------------------------------------------------------------
 // USD conversion using each record's frozen rate
@@ -332,11 +375,12 @@ const isReceived = (d: Donation) => d.donationStatus === 'התקבלה'
 const isCancelled = (d: Donation) => d.paymentStatus === 'בוטל'
 
 // ----------------------------------------------------------------------------
-// Main: build the full enriched bundle (cached implicitly via raw caches)
+// Main: build the full enriched bundle — 2 parallel requests (donors + financials)
 // ----------------------------------------------------------------------------
 export async function getDataBundle(): Promise<DataBundle> {
-  const [donorItems, donationItems, commitmentItems, rateItems] = await Promise.all([
-    getRawDonors(), getRawDonations(), getRawCommitments(), getRawRates(),
+  const [donorItems, { donationItems, commitmentItems, rateItems }] = await Promise.all([
+    getRawDonors(),
+    getFinancialsRaw(),
   ])
 
   const rateMap = buildRateMap(rateItems)
@@ -419,15 +463,14 @@ export async function getDonorHeader(id: string): Promise<Donor | null> {
 
 // ----------------------------------------------------------------------------
 // Backward-compatible exports (used by API routes + not-yet-rebuilt screens).
-// These keep the app building/working during the phased redesign.
 // ----------------------------------------------------------------------------
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   const { donors } = await getDataBundle()
   return donors
 }
 export const getCachedDonors = getRawDonors
-export const getCachedDonations = getRawDonations
-export const getCachedCommitments = getRawCommitments
+export const getCachedDonations = async () => (await getFinancialsRaw()).donationItems
+export const getCachedCommitments = async () => (await getFinancialsRaw()).commitmentItems
 
 // ----------------------------------------------------------------------------
 // Create donation (write-back) — unchanged behaviour, verified column IDs
