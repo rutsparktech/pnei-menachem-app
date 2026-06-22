@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const { event } = body as { event?: { type?: string; boardId?: string } }
     console.log('Monday webhook:', event?.type, event?.boardId)
-    revalidateTag('monday-data')
+    revalidateTag('monday-data', 'components')
   } catch (err) {
     console.error('Monday webhook error:', err)
   }
