@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getDonorById } from '@/lib/api'
+import { getDonorDetail } from '@/lib/monday'
 import { ClassificationBadge } from '@/components/StatusBadge'
 import type { Donation, Commitment } from '@/lib/types'
 
@@ -106,7 +106,7 @@ function DonorPageSkeleton() {
 }
 
 async function DonorContent({ id }: { id: string }) {
-  const donor = await getDonorById(id)
+  const donor = await getDonorDetail(id)
   if (!donor) notFound()
 
   const sortedDonations = [...donor.donations].sort((a, b) =>
