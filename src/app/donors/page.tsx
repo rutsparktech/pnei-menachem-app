@@ -1,19 +1,20 @@
 import Link from 'next/link'
-
-export const maxDuration = 300
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import { getAllDonors } from '@/lib/api'
 import KpiCard from '@/components/KpiCard'
 import DonorCard from '@/components/DonorCard'
 import SearchInput from '@/components/SearchInput'
 import RefreshButton from '@/components/RefreshButton'
 
-export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
 
 async function DashboardContent({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  await connection()
   const { q } = await searchParams
   const donors = await getAllDonors()
   const lastUpdated = new Date().toISOString()
