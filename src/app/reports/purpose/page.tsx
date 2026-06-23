@@ -1,8 +1,9 @@
-import { connection } from 'next/server'
 import { Suspense } from 'react'
-import { getAllDonors } from '@/lib/api'
+import { connection } from 'next/server'
+import { getAllDonations } from '@/lib/monday'
 import type { Donation } from '@/lib/types'
 
+export const maxDuration = 300
 function fAmount(n: number, currency: string) {
   const cur = currency?.toUpperCase()
   if (!cur || cur === 'USD' || cur === '$') {
@@ -33,8 +34,7 @@ const FUNDS = [
 
 async function PurposeContent() {
   await connection()
-  const donors = await getAllDonors()
-  const allDonations: Donation[] = donors.flatMap((d) => d.donations)
+  const allDonations: Donation[] = await getAllDonations()
 
   const paid = allDonations.filter((d) => {
     const ps = d.paymentStatus.toLowerCase()

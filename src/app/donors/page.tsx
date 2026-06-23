@@ -1,17 +1,21 @@
-import { connection } from 'next/server'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import { getAllDonors } from '@/lib/api'
 import KpiCard from '@/components/KpiCard'
 import DonorCard from '@/components/DonorCard'
 import SearchInput from '@/components/SearchInput'
 import RefreshButton from '@/components/RefreshButton'
 
+export const maxDuration = 300
+
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
 
-async function DashboardContent({ q }: { q?: string }) {
+async function DashboardContent({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await searchParams
+  await connection()
   const donors = await getAllDonors()
   const lastUpdated = new Date().toISOString()
 
@@ -66,14 +70,11 @@ async function DashboardContent({ q }: { q?: string }) {
   )
 }
 
-export default async function Dashboard({
+export default function Dashboard({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string }>
 }) {
-  await connection()
-  const { q } = await searchParams
-
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto">
       <div className="mb-3">
@@ -102,7 +103,7 @@ export default async function Dashboard({
           </div>
         }
       >
-        <DashboardContent q={q} />
+        <DashboardContent searchParams={searchParams} />
       </Suspense>
     </div>
   )

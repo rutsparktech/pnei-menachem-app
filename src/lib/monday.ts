@@ -89,18 +89,28 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>, a
       signal: AbortSignal.timeout(30000),
     })
   } catch (err) {
+    console.warn(`[monday] fetch error (attempt ${attempt + 1}):`, (err as Error).message)
     if (attempt >= 3) throw err
     await delay(RETRY_DELAYS[attempt] + jitter())
     return mondayQuery(query, variables, attempt + 1)
   }
   if (res.status === 429) {
+    const retryAfter = res.headers.get('retry-after')
+    console.warn(`[monday] 429 rate-limit (attempt ${attempt + 1})${retryAfter ? ', retry-after: ' + retryAfter + 's' : ''}`)
     if (attempt >= 3) throw new Error('Monday API rate limit exceeded after retries')
     await delay(RETRY_DELAYS[attempt] + jitter())
     return mondayQuery(query, variables, attempt + 1)
   }
-  if (!res.ok) throw new Error(`Monday API error: ${res.status}`)
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    console.error(`[monday] HTTP ${res.status}:`, errBody.slice(0, 400))
+    throw new Error(`Monday API error: ${res.status}`)
+  }
   const json = await res.json()
-  if (json.errors) throw new Error(json.errors[0]?.message ?? 'Monday API error')
+  if (json.errors) {
+    console.error('[monday] GraphQL errors:', JSON.stringify(json.errors).slice(0, 400))
+    throw new Error(json.errors[0]?.message ?? 'Monday API error')
+  }
   return json.data
 }
 
@@ -110,6 +120,7 @@ type RawItem = { id: string; name: string; updated_at?: string; column_values: R
 const COL_FRAGMENT = `id text value ... on BoardRelationValue { linked_items { id } }`
 
 async function fetchAllItems(boardId: string, colIdList: string, extraItemFields = ''): Promise<RawItem[]> {
+  const _t0 = Date.now()
   const itemBlock = `
     id
     name
@@ -136,6 +147,7 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
     items.push(...(np.items ?? []))
     cursor = np.cursor ?? null
   }
+  console.log(`[monday] board ${boardId} fetched ${items.length} items in ${Date.now() - _t0}ms`)
   return items
 }
 
@@ -334,10 +346,12 @@ const isCancelled = (d: Donation) => d.paymentStatus === 'בוטל'
 // ----------------------------------------------------------------------------
 // Main: build the full enriched bundle (cached implicitly via raw caches)
 // ----------------------------------------------------------------------------
-export async function getDataBundle(): Promise<DataBundle> {
-  const [donorItems, donationItems, commitmentItems, rateItems] = await Promise.all([
-    getRawDonors(), getRawDonations(), getRawCommitments(), getRawRates(),
-  ])
+async function computeBundle(): Promise<DataBundle> {
+  // donors + rates in parallel (small, fast boards)
+  const [donorItems, rateItems] = await Promise.all([getRawDonors(), getRawRates()])
+  // donations then commitments sequentially — avoids Monday complexity spike on cold start
+  const donationItems = await getRawDonations()
+  const commitmentItems = await getRawCommitments()
 
   const rateMap = buildRateMap(rateItems)
 
@@ -347,6 +361,7 @@ export async function getDataBundle(): Promise<DataBundle> {
     donorNameById.set(it.id, text(it.column_values, C.donor.hebrewName) || it.name)
   }
 
+  console.log('[monday] raw donations size:', JSON.stringify(donationItems).length)
   const donations = donationItems.map((it) => mapDonation(it, rateMap, donorNameById))
   const commitments = commitmentItems.map((it) => mapCommitment(it, rateMap, donorNameById))
 
@@ -406,17 +421,66 @@ export async function getDataBundle(): Promise<DataBundle> {
   return { donors, donations, commitments, lastSync: new Date().toISOString() }
 }
 
-export async function getDonorById(id: string): Promise<DonorWithDetails | null> {
-  const { donors } = await getDataBundle()
-  return donors.find((d) => d.id === id) ?? null
-}
+// Public alias — keeps existing callers working
+export const getDataBundle = computeBundle
+
+// ----------------------------------------------------------------------------
+// Cached selectors — each wraps computeBundle and returns only what it needs.
+// The raw fetches (getRawDonors etc.) are already cached; these cache the
+// mapping+aggregation layer on top of them.
+// ----------------------------------------------------------------------------
+export const getHomeSummary = unstable_cache(async () => {
+  const bundle = await computeBundle()
+  const year = new Date().getFullYear()
+  const currentMonth = new Date().getMonth()
+  const months = Array.from({ length: 12 }, (_, m) => {
+    const inMonth = bundle.donations.filter((d) => {
+      if (!d.date || d.paymentStatus === 'בטול') return false
+      const dt = new Date(d.date)
+      return dt.getFullYear() === year && dt.getMonth() === m
+    })
+    const received = inMonth.filter((d) => !d.isFuture).reduce((s, d) => s + d.usd, 0)
+    const future = inMonth.filter((d) => d.isFuture).reduce((s, d) => s + d.usd, 0)
+    return { month: m, received, future, total: received + future, count: inMonth.length }
+  })
+  const yearReceived = months.reduce((s, x) => s + x.received, 0)
+  const yearFuture = months.reduce((s, x) => s + x.future, 0)
+  const totalCommitted = bundle.commitments.reduce((s, c) => s + c.usd, 0)
+  const totalPaid = bundle.commitments.reduce((s, c) => s + c.paidUsd, 0)
+  return { year, currentMonth, months, yearReceived, yearFuture, totalCommitted, totalPaid, donorCount: bundle.donors.length }
+}, ['pm-home-summary'], { revalidate: 3600, tags: ['monday-data'] })
+
+export const getDonorList = unstable_cache(async (): Promise<Donor[]> => {
+  const bundle = await computeBundle()
+  // Strip nested arrays — this selector serves the donors list page which
+  // only needs aggregated totals, not per-donor donations/commitments arrays.
+  return bundle.donors.map(({ donations: _d, commitments: _c, ...rest }) => rest)
+}, ['pm-donor-list'], { revalidate: 3600, tags: ['monday-data'] })
+
+export const getDonorDetail = unstable_cache(async (id: string) => {
+  const bundle = await computeBundle()
+  return bundle.donors.find((d) => d.id === id) ?? null
+}, ['pm-donor-detail'], { revalidate: 3600, tags: ['monday-data'] })
+export const getAllDonations = unstable_cache(async (): Promise<Donation[]> => {
+  const bundle = await computeBundle()
+  return bundle.donations
+}, ['pm-all-donations'], { revalidate: 3600, tags: ['monday-data'] })
+
+export const getAllCommitments = unstable_cache(async (): Promise<Commitment[]> => {
+  const bundle = await computeBundle()
+  return bundle.commitments
+}, ['pm-all-commitments'], { revalidate: 3600, tags: ['monday-data'] })
 
 // ----------------------------------------------------------------------------
 // Backward-compatible exports (used by API routes + not-yet-rebuilt screens).
 // These keep the app building/working during the phased redesign.
 // ----------------------------------------------------------------------------
+export async function getDonorById(id: string): Promise<DonorWithDetails | null> {
+  return getDonorDetail(id)
+}
+
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
-  const { donors } = await getDataBundle()
+  const { donors } = await computeBundle()
   return donors
 }
 export const getCachedDonors = getRawDonors

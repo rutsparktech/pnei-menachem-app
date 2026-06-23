@@ -1,10 +1,12 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getDonorById } from '@/lib/api'
+import { connection } from 'next/server'
+import { getDonorDetail } from '@/lib/monday'
 import { ClassificationBadge } from '@/components/StatusBadge'
 import type { Donation, Commitment } from '@/lib/types'
 
+export const maxDuration = 300
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
 }
@@ -106,7 +108,10 @@ function DonorPageSkeleton() {
 }
 
 async function DonorContent({ id }: { id: string }) {
-  const donor = await getDonorById(id)
+  await connection()
+  // Monday item IDs are numeric — reject anything else before hitting the API
+  if (!/^\d{5,15}$/.test(id)) notFound()
+  const donor = await getDonorDetail(id)
   if (!donor) notFound()
 
   const sortedDonations = [...donor.donations].sort((a, b) =>
