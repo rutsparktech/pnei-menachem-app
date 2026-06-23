@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import { getHomeSummary } from '@/lib/monday'
 import HomeClient from './components/HomeClient'
 
-export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 export default function HomePage() {
@@ -14,6 +14,7 @@ export default function HomePage() {
 }
 
 async function HomeData() {
+  await connection()
   let summary
   try {
     summary = await getHomeSummary()
@@ -26,7 +27,6 @@ async function HomeData() {
   }
   return <HomeClient {...summary} />
 }
-
 function HomeSkeleton() {
   return (
     <div dir="rtl" className="px-4 pt-3 pb-6 max-w-3xl mx-auto animate-pulse">
