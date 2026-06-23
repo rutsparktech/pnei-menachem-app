@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getAllDonors } from '@/lib/api'
+import { getAllDonorsWithDetails } from '@/lib/api'
 import SearchInput from '@/components/SearchInput'
 import type { Donation } from '@/lib/types'
 
@@ -37,7 +37,7 @@ function StatusPill({ label }: { label: string }) {
 }
 
 async function ReportTable({ q, status }: { q?: string; status?: string }) {
-  const donors = await getAllDonors()
+  const donors = await getAllDonorsWithDetails()
   let donations: (Donation & { donorName: string })[] = donors.flatMap((d) =>
     d.donations.map((don) => ({ ...don, donorName: d.hebrewName || d.name }))
   )
