@@ -89,18 +89,28 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>, a
       signal: AbortSignal.timeout(30000),
     })
   } catch (err) {
+    console.warn(`[monday] fetch error (attempt ${attempt + 1}):`, (err as Error).message)
     if (attempt >= 3) throw err
     await delay(RETRY_DELAYS[attempt] + jitter())
     return mondayQuery(query, variables, attempt + 1)
   }
   if (res.status === 429) {
+    const retryAfter = res.headers.get('retry-after')
+    console.warn(`[monday] 429 rate-limit (attempt ${attempt + 1})${retryAfter ? ', retry-after: ' + retryAfter + 's' : ''}`)
     if (attempt >= 3) throw new Error('Monday API rate limit exceeded after retries')
     await delay(RETRY_DELAYS[attempt] + jitter())
     return mondayQuery(query, variables, attempt + 1)
   }
-  if (!res.ok) throw new Error(`Monday API error: ${res.status}`)
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    console.error(`[monday] HTTP ${res.status}:`, errBody.slice(0, 400))
+    throw new Error(`Monday API error: ${res.status}`)
+  }
   const json = await res.json()
-  if (json.errors) throw new Error(json.errors[0]?.message ?? 'Monday API error')
+  if (json.errors) {
+    console.error('[monday] GraphQL errors:', JSON.stringify(json.errors).slice(0, 400))
+    throw new Error(json.errors[0]?.message ?? 'Monday API error')
+  }
   return json.data
 }
 
@@ -110,6 +120,7 @@ type RawItem = { id: string; name: string; updated_at?: string; column_values: R
 const COL_FRAGMENT = `id text value ... on BoardRelationValue { linked_items { id } }`
 
 async function fetchAllItems(boardId: string, colIdList: string, extraItemFields = ''): Promise<RawItem[]> {
+  const _t0 = Date.now()
   const itemBlock = `
     id
     name
@@ -136,6 +147,7 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
     items.push(...(np.items ?? []))
     cursor = np.cursor ?? null
   }
+  console.log(`[monday] board ${boardId} fetched ${items.length} items in ${Date.now() - _t0}ms`)
   return items
 }
 
@@ -335,9 +347,11 @@ const isCancelled = (d: Donation) => d.paymentStatus === 'בוטל'
 // Main: build the full enriched bundle (cached implicitly via raw caches)
 // ----------------------------------------------------------------------------
 async function computeBundle(): Promise<DataBundle> {
-  const [donorItems, donationItems, commitmentItems, rateItems] = await Promise.all([
-    getRawDonors(), getRawDonations(), getRawCommitments(), getRawRates(),
-  ])
+  // donors + rates in parallel (small, fast boards)
+  const [donorItems, rateItems] = await Promise.all([getRawDonors(), getRawRates()])
+  // donations then commitments sequentially — avoids Monday complexity spike on cold start
+  const donationItems = await getRawDonations()
+  const commitmentItems = await getRawCommitments()
 
   const rateMap = buildRateMap(rateItems)
 
