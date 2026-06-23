@@ -1,5 +1,7 @@
 import { connection } from 'next/server'
 import type { NextRequest } from 'next/server'
+export const maxDuration = 300
+
 import { getCachedDonors, getCachedDonations, getCachedCommitments, getHomeSummary, getDonorList } from '@/lib/monday'
 
 export async function GET(req: NextRequest) {
