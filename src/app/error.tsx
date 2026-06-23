@@ -10,6 +10,9 @@ export default function Error({
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
       <p className="text-lg font-semibold text-text mb-2">שגיאה בטעינת הנתונים</p>
+      {error.message && (
+        <p className="text-sm text-muted mb-2 max-w-sm">{error.message}</p>
+      )}
       <p className="text-muted text-sm mb-5">נסי לרענן את הדף</p>
       <button
         onClick={reset}
