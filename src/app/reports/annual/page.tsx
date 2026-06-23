@@ -1,9 +1,9 @@
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import { getAllDonorsWithDetails } from '@/lib/api'
 import SearchInput from '@/components/SearchInput'
 import type { Donation } from '@/lib/types'
 
-export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 function fAmount(n: number, currency: string) {
   const cur = currency?.toUpperCase()
@@ -39,6 +39,7 @@ function StatusPill({ label }: { label: string }) {
 }
 
 async function ReportTable({ q, status }: { q?: string; status?: string }) {
+  await connection()
   const donors = await getAllDonorsWithDetails()
   let donations: (Donation & { donorName: string })[] = donors.flatMap((d) =>
     d.donations.map((don) => ({ ...don, donorName: d.hebrewName || d.name }))
