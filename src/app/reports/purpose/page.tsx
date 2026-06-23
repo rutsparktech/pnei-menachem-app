@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
+import { connection } from 'next/server'
 import { getAllDonations } from '@/lib/monday'
 import type { Donation } from '@/lib/types'
 
-export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 function fAmount(n: number, currency: string) {
   const cur = currency?.toUpperCase()
@@ -33,6 +33,7 @@ const FUNDS = [
 ]
 
 async function PurposeContent() {
+  await connection()
   const allDonations: Donation[] = await getAllDonations()
 
   const paid = allDonations.filter((d) => {
