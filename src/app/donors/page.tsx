@@ -1,4 +1,6 @@
 import Link from 'next/link'
+
+export const maxDuration = 300
 import { Suspense } from 'react'
 import { getAllDonors } from '@/lib/api'
 import KpiCard from '@/components/KpiCard'
