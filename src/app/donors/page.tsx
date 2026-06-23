@@ -14,8 +14,8 @@ function fUSD(n: number) {
 }
 
 async function DashboardContent({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await connection()
   const { q } = await searchParams
+  await connection()
   const donors = await getAllDonors()
   const lastUpdated = new Date().toISOString()
 
