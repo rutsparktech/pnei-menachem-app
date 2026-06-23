@@ -3,6 +3,8 @@ import { getAllDonorsWithDetails } from '@/lib/api'
 import SearchInput from '@/components/SearchInput'
 import type { Donation } from '@/lib/types'
 
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 function fAmount(n: number, currency: string) {
   const cur = currency?.toUpperCase()
   if (!cur || cur === 'USD' || cur === '$') {
