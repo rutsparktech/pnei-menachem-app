@@ -2,6 +2,8 @@ import { Suspense } from 'react'
 import { getHomeSummary } from '@/lib/monday'
 import HomeClient from './components/HomeClient'
 
+export const maxDuration = 300
+
 export default function HomePage() {
   return (
     <Suspense fallback={<HomeSkeleton />}>
