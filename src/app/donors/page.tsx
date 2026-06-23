@@ -3,9 +3,9 @@ import { Suspense } from 'react'
 import { connection } from 'next/server'
 import { getAllDonors } from '@/lib/api'
 import KpiCard from '@/components/KpiCard'
-import DonorCard from '@/components/DonorCard'
 import SearchInput from '@/components/SearchInput'
 import RefreshButton from '@/components/RefreshButton'
+import DonorListClient from './DonorListClient'
 
 export const maxDuration = 300
 
@@ -24,6 +24,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ q?: 
   const totalBalance = donors.reduce((s, d) => s + d.balance, 0)
   const activeDonors = donors.filter((d) => d.totalCommitments > 0).length
 
+  // Server-side filter by search query; donors already sorted by totalDonations desc
   const filtered = q
     ? donors.filter(
         (d) =>
@@ -60,11 +61,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<{ q?: 
           {q && <p className="text-sm mt-1">נסה חיפוש אחר</p>}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {filtered.map((donor) => (
-            <DonorCard key={donor.id} donor={donor} />
-          ))}
-        </div>
+        <DonorListClient donors={filtered} />
       )}
     </>
   )
