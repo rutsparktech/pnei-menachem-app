@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { unstable_cache } from 'next/cache'
 import type {
   Donor, Donation, Commitment, DonorWithDetails, DataBundle,
@@ -129,7 +130,7 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
 
   const initial = await mondayQuery(`{
     boards(ids: [${boardId}]) {
-      items_page(limit: 200) { cursor items { ${itemBlock} } }
+      items_page(limit: 500) { cursor items { ${itemBlock} } }
     }
   }`)
   const page = initial.boards[0]?.items_page ?? {}
@@ -141,7 +142,7 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
       `query NextPage($cursor: String!, $limit: Int!) {
         next_items_page(limit: $limit, cursor: $cursor) { cursor items { ${itemBlock} } }
       }`,
-      { cursor, limit: 200 }
+      { cursor, limit: 500 }
     )
     const np = next.next_items_page ?? {}
     items.push(...(np.items ?? []))
@@ -199,29 +200,48 @@ function todayISO(): string {
 }
 
 // ----------------------------------------------------------------------------
-// Cached raw fetches
+// Column lists for fetching — display-only columns excluded to reduce payload.
+// C.donation.paymentMethod / donationType / notes are kept in C for createDonation writes.
 // ----------------------------------------------------------------------------
-const DONOR_COLS = Object.values(C.donor).map((id) => `"${id}"`).join(', ')
-const DONATION_COLS = Object.values(C.donation).map((id) => `"${id}"`).join(', ')
-const COMMITMENT_COLS = Object.values(C.commitment).filter(Boolean).map((id) => `"${id}"`).join(', ')
-const RATE_COLS = Object.values(C.rate).map((id) => `"${id}"`).join(', ')
+const DONOR_COLS = [
+  C.donor.hebrewName, C.donor.donorNumber, C.donor.city, C.donor.phone,
+  C.donor.email, C.donor.classification, C.donor.currency, C.donor.lastUpdated,
+  // photo omitted — photoUrl comes from item.assets instead
+].map((id) => `"${id}"`).join(', ')
 
-const getRawDonors = unstable_cache(
-  () => fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, `updated_at assets { public_url }`),
-  ['pm-donors'], { revalidate: 3600, tags: ['monday-data'] }
-)
-const getRawDonations = unstable_cache(
-  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
-  ['pm-donations'], { revalidate: 3600, tags: ['monday-data'] }
-)
-const getRawCommitments = unstable_cache(
-  () => fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
-  ['pm-commitments'], { revalidate: 3600, tags: ['monday-data'] }
-)
-const getRawRates = unstable_cache(
-  () => fetchAllItems(RATES_BOARD_ID, RATE_COLS),
-  ['pm-rates'], { revalidate: 3600, tags: ['monday-data'] }
-)
+const DONATION_COLS = [
+  C.donation.donorRel, C.donation.commitmentRel, C.donation.rateRel,
+  C.donation.amount, C.donation.currency, C.donation.date, C.donation.expectedDate,
+  C.donation.designation, C.donation.donationStatus, C.donation.paymentStatus,
+  // paymentMethod, donationType, notes omitted — display-only, reduces 5MB payload ~25%
+].map((id) => `"${id}"`).join(', ')
+
+const COMMITMENT_COLS = [
+  C.commitment.donorRel, C.commitment.rateRel, C.commitment.amount, C.commitment.currency,
+  C.commitment.date, C.commitment.designation, C.commitment.status, C.commitment.type,
+  C.commitment.paymentsCount,
+  // notes omitted — display-only
+  ...[C.commitment.monthlyAmount, C.commitment.standingStart, C.commitment.standingTotal].filter(Boolean),
+].map((id) => `"${id}"`).join(', ')
+
+const RATE_COLS = [C.rate.usd, C.rate.eur].map((id) => `"${id}"`).join(', ')
+
+// ----------------------------------------------------------------------------
+// Raw board fetches — plain async functions (not cached).
+// Caching happens only at the small final-selector level below.
+// ----------------------------------------------------------------------------
+async function getRawDonors() {
+  return fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, 'updated_at assets { public_url }')
+}
+async function getRawDonations() {
+  return fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
+}
+async function getRawCommitments() {
+  return fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
+}
+async function getRawRates() {
+  return fetchAllItems(RATES_BOARD_ID, RATE_COLS)
+}
 
 // ----------------------------------------------------------------------------
 // USD conversion using each record's frozen rate
@@ -344,9 +364,12 @@ const isReceived = (d: Donation) => d.donationStatus === 'התקבלה'
 const isCancelled = (d: Donation) => d.paymentStatus === 'בוטל'
 
 // ----------------------------------------------------------------------------
-// Main: build the full enriched bundle (cached implicitly via raw caches)
+// computeBundle — builds the full enriched data bundle.
+// Wrapped with React cache() for per-request deduplication: when multiple
+// cached selectors call computeBundle() in the same request (e.g., warmup),
+// Monday is fetched only once.
 // ----------------------------------------------------------------------------
-async function computeBundle(): Promise<DataBundle> {
+const computeBundle = cache(async (): Promise<DataBundle> => {
   // donors + rates in parallel (small, fast boards)
   const [donorItems, rateItems] = await Promise.all([getRawDonors(), getRawRates()])
   // donations then commitments sequentially — avoids Monday complexity spike on cold start
@@ -419,15 +442,14 @@ async function computeBundle(): Promise<DataBundle> {
   })
 
   return { donors, donations, commitments, lastSync: new Date().toISOString() }
-}
+})
 
 // Public alias — keeps existing callers working
 export const getDataBundle = computeBundle
 
 // ----------------------------------------------------------------------------
-// Cached selectors — each wraps computeBundle and returns only what it needs.
-// The raw fetches (getRawDonors etc.) are already cached; these cache the
-// mapping+aggregation layer on top of them.
+// Cached selectors — small results only (<2MB each), revalidate every 2 hours.
+// Raw fetches are NOT cached; only these final small slices are persisted.
 // ----------------------------------------------------------------------------
 export const getHomeSummary = unstable_cache(async () => {
   const bundle = await computeBundle()
@@ -447,33 +469,39 @@ export const getHomeSummary = unstable_cache(async () => {
   const yearFuture = months.reduce((s, x) => s + x.future, 0)
   const totalCommitted = bundle.commitments.reduce((s, c) => s + c.usd, 0)
   const totalPaid = bundle.commitments.reduce((s, c) => s + c.paidUsd, 0)
-  return { year, currentMonth, months, yearReceived, yearFuture, totalCommitted, totalPaid, donorCount: bundle.donors.length }
-}, ['pm-home-summary'], { revalidate: 3600, tags: ['monday-data'] })
+  const result = { year, currentMonth, months, yearReceived, yearFuture, totalCommitted, totalPaid, donorCount: bundle.donors.length }
+  console.log('[cache] getHomeSummary size:', JSON.stringify(result).length)
+  return result
+}, ['pm-home-summary'], { revalidate: 7200, tags: ['monday-data'] })
 
 export const getDonorList = unstable_cache(async (): Promise<Donor[]> => {
   const bundle = await computeBundle()
-  // Strip nested arrays — this selector serves the donors list page which
-  // only needs aggregated totals, not per-donor donations/commitments arrays.
-  return bundle.donors.map(({ donations: _d, commitments: _c, ...rest }) => rest)
-}, ['pm-donor-list'], { revalidate: 3600, tags: ['monday-data'] })
+  const result = bundle.donors.map(({ donations: _d, commitments: _c, ...rest }) => rest)
+  console.log('[cache] getDonorList size:', JSON.stringify(result).length)
+  return result
+}, ['pm-donor-list'], { revalidate: 7200, tags: ['monday-data'] })
 
 export const getDonorDetail = unstable_cache(async (id: string) => {
   const bundle = await computeBundle()
-  return bundle.donors.find((d) => d.id === id) ?? null
-}, ['pm-donor-detail'], { revalidate: 3600, tags: ['monday-data'] })
-export const getAllDonations = unstable_cache(async (): Promise<Donation[]> => {
+  const result = bundle.donors.find((d) => d.id === id) ?? null
+  console.log('[cache] getDonorDetail size:', JSON.stringify(result).length)
+  return result
+}, ['pm-donor-detail'], { revalidate: 7200, tags: ['monday-data'] })
+
+// getAllDonations / getAllCommitments — NOT cached (results too large for 2MB limit).
+// These call computeBundle() which React cache() deduplicates within the same request.
+export async function getAllDonations(): Promise<Donation[]> {
   const bundle = await computeBundle()
   return bundle.donations
-}, ['pm-all-donations'], { revalidate: 3600, tags: ['monday-data'] })
+}
 
-export const getAllCommitments = unstable_cache(async (): Promise<Commitment[]> => {
+export async function getAllCommitments(): Promise<Commitment[]> {
   const bundle = await computeBundle()
   return bundle.commitments
-}, ['pm-all-commitments'], { revalidate: 3600, tags: ['monday-data'] })
+}
 
 // ----------------------------------------------------------------------------
 // Backward-compatible exports (used by API routes + not-yet-rebuilt screens).
-// These keep the app building/working during the phased redesign.
 // ----------------------------------------------------------------------------
 export async function getDonorById(id: string): Promise<DonorWithDetails | null> {
   return getDonorDetail(id)
@@ -483,6 +511,8 @@ export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   const { donors } = await computeBundle()
   return donors
 }
+
+// Raw fetch aliases — kept for any callers that import them directly.
 export const getCachedDonors = getRawDonors
 export const getCachedDonations = getRawDonations
 export const getCachedCommitments = getRawCommitments

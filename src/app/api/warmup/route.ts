@@ -2,12 +2,10 @@ import { connection } from 'next/server'
 import type { NextRequest } from 'next/server'
 export const maxDuration = 300
 
-import { getCachedDonors, getCachedDonations, getCachedCommitments, getHomeSummary, getDonorList } from '@/lib/monday'
+import { getHomeSummary, getDonorList } from '@/lib/monday'
 
 export async function GET(req: NextRequest) {
-  // Protect against unauthorized callers.
   // Vercel Cron automatically adds Authorization: Bearer <CRON_SECRET>.
-  // When CRON_SECRET is set, any other caller is rejected.
   const secret = process.env.CRON_SECRET
   if (secret) {
     const auth = req.headers.get('authorization')
@@ -20,9 +18,9 @@ export async function GET(req: NextRequest) {
 
   await connection()
   const start = Date.now()
-  await Promise.all([
-    getCachedDonors(), getCachedDonations(), getCachedCommitments(),
-    getHomeSummary(), getDonorList(),
-  ])
+  // Sequential: React cache() in computeBundle() deduplicates the Monday fetch
+  // so both selectors share a single board-fetch round-trip per warmup run.
+  await getHomeSummary()
+  await getDonorList()
   return Response.json({ ok: true, ms: Date.now() - start, timestamp: new Date().toISOString() })
 }
