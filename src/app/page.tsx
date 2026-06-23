@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { getHomeSummary } from '@/lib/monday'
 import HomeClient from './components/HomeClient'
 
+export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 export default function HomePage() {
