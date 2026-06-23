@@ -447,6 +447,15 @@ export const getDonorDetail = unstable_cache(async (id: string) => {
   const bundle = await computeBundle()
   return bundle.donors.find((d) => d.id === id) ?? null
 }, ['pm-donor-detail'], { revalidate: 3600, tags: ['monday-data'] })
+export const getAllDonations = unstable_cache(async (): Promise<Donation[]> => {
+  const bundle = await computeBundle()
+  return bundle.donations
+}, ['pm-all-donations'], { revalidate: 3600, tags: ['monday-data'] })
+
+export const getAllCommitments = unstable_cache(async (): Promise<Commitment[]> => {
+  const bundle = await computeBundle()
+  return bundle.commitments
+}, ['pm-all-commitments'], { revalidate: 3600, tags: ['monday-data'] })
 
 // ----------------------------------------------------------------------------
 // Backward-compatible exports (used by API routes + not-yet-rebuilt screens).
