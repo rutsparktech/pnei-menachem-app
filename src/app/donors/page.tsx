@@ -1,5 +1,4 @@
 import { Suspense } from 'react'
-import { connection } from 'next/server'
 import { getAllDonors } from '@/lib/api'
 import KpiCard from '@/components/KpiCard'
 import SearchInput from '@/components/SearchInput'
@@ -7,6 +6,7 @@ import RefreshButton from '@/components/RefreshButton'
 import DonorListClient from './DonorListClient'
 
 export const maxDuration = 300
+export const revalidate = 7200
 
 function fUSD(n: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
@@ -14,7 +14,6 @@ function fUSD(n: number) {
 
 async function DashboardContent({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams
-  await connection()
   const donors = await getAllDonors()
   const lastUpdated = new Date().toISOString()
 
