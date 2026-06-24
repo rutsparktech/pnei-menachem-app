@@ -31,6 +31,9 @@ const C = {
     currency: 'color_mm00jmzh',
     photo: 'file_mkzyy76s',
     lastUpdated: 'pulse_updated_mm00a3ms',
+    // reverse-link columns on the donor board → used for fast per-donor fetch
+    donationsRel: 'board_relation_mm00ey5h',   // תרומות
+    commitmentsRel: 'board_relation_mm00qhrb', // התחייבויות
   },
   donation: {
     donorRel: 'board_relation_mm00vj7d',
@@ -152,17 +155,21 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
   return items
 }
 
-//הוספה של אבי ברונר
-//המטר הלהביא רק את התרומות שלה תרום הספציפי
-async function fetchItemsByRelation(boardId, relationColId, donorId, colIdList, extra='') {
-  const data = await mondayQuery(`{
-    boards(ids: [${boardId}]) {
-      items_page(limit: 100, query_params: { rules: [{
-        column_id: "${relationColId}", compare_value: ["${donorId}"], operator: any_of
-      }] }) { items { id name ${extra} column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} } } }
-    }
-  }`)
-  return data.boards?.[0]?.items_page?.items ?? []
+// Fetch items by their IDs, chunked at 100 (a donor can have 200+ linked records).
+// Replaces the old relation-filter approach: Monday's query_params filter on a
+// board_relation column matches the linked item's NAME, not its ID, so filtering
+// by donor id failed. Reverse lookup (read linked ids off the donor item, then
+// fetch by id) is reliable.
+async function fetchItemsByIds(ids: string[], colIdList: string, extra = ''): Promise<RawItem[]> {
+  const out: RawItem[] = []
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100)
+    if (!chunk.length) continue
+    const data = await mondayQuery(`{ items(ids:[${chunk.join(',')}]) {
+      id name ${extra} column_values(ids:[${colIdList}]) { ${COL_FRAGMENT} } } }`)
+    out.push(...(data.items ?? []))
+  }
+  return out
 }
 
 
@@ -193,6 +200,18 @@ function relationId(cv: RawCol[], id: string): string | null {
     } catch { /* ignore */ }
   }
   return null
+}
+// All linked ids in a board_relation column (relationId returns only the first).
+function linkedIds(cv: RawCol[], id: string): string[] {
+  const c = col(cv, id)
+  if (c?.linked_items?.length) return c.linked_items.map((li) => li.id)
+  if (c?.value) {
+    try {
+      const ids = JSON.parse(c.value)?.linkedPulseIds ?? []
+      return ids.map((x: any) => String(x?.linkedPulseId ?? x))
+    } catch { /* ignore */ }
+  }
+  return []
 }
 
 const CANON = new Set<string>(DESIGNATIONS)
@@ -661,17 +680,26 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   return { ...mapDonor(donorItem), donations, commitments }
 }
 */
-//גרסא חדשה אבי ברונר
+//גרסא חדשה אבי ברונר — reverse lookup: קוראים את מזהי התרומות/התחייבויות מתוך פריט התורם
 async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
-  const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
-    mondayQuery(`{ items(ids:[${id}]){ id name updated_at assets{public_url}
-       column_values(ids:[${DONOR_COLS}]){ ${COL_FRAGMENT} } } }`),
-    getRawRates(),
-    fetchItemsByRelation(DONATION_BOARD_ID,   C.donation.donorRel,   id, DONATION_COLS),
-    fetchItemsByRelation(COMMITMENT_BOARD_ID, C.commitment.donorRel, id, COMMITMENT_COLS),
-  ])
+  // 1) פריט התורם + שתי עמודות הקישור שלו (תרומות / התחייבויות)
+  const donorRes = await mondayQuery(`{ items(ids:[${id}]) {
+    id name updated_at assets{public_url}
+    column_values(ids:[${DONOR_COLS}, "${C.donor.donationsRel}", "${C.donor.commitmentsRel}"]) { ${COL_FRAGMENT} }
+  } }`)
   const donorItem = donorRes.items?.[0]
   if (!donorItem) return null
+
+  // 2) מזהי התרומות וההתחייבויות המקושרים לתורם
+  const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
+  const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
+
+  // 3) שליפה לפי ID (תמיד עובדת) + שערים
+  const [rateItems, donationItems, commitmentItems] = await Promise.all([
+    getRawRates(),
+    fetchItemsByIds(donationIds,   DONATION_COLS),
+    fetchItemsByIds(commitmentIds, COMMITMENT_COLS),
+  ])
 
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
