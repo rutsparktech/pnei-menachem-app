@@ -243,23 +243,37 @@ const COMMITMENT_COLS = [
 const RATE_COLS = [C.rate.usd, C.rate.eur].map((id) => `"${id}"`).join(', ')
 
 // ----------------------------------------------------------------------------
-// Raw board fetches — plain async functions (not cached).
+// Raw board fetches — cached with unstable_cache (1-hour TTL).
+//
+// Caching at this level means: when a higher-level selector (getDonorList,
+// getDonorDetail, etc.) has a cache miss, it only recomputes — it doesn't
+// re-fetch from Monday as long as the raw-board caches are still valid.
+//
+// getRawDonationsLean: lean 8-col fetch. Size is ~2-3MB raw; Vercel will
+// attempt to cache it and log "items over 2MB cannot be cached" if it exceeds
+// the 2MB limit — graceful degradation (falls back to live fetch each time).
+// All other boards are small (<300KB) and will always cache successfully.
 // ----------------------------------------------------------------------------
-async function getRawDonors() {
-  return fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, 'updated_at assets { public_url }')
-}
-async function getRawDonations() {
-  return fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
-}
-async function getRawDonationsLean() {
-  return fetchAllItems(DONATION_BOARD_ID, DONATION_COLS_LEAN)
-}
-async function getRawCommitments() {
-  return fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
-}
-async function getRawRates() {
-  return fetchAllItems(RATES_BOARD_ID, RATE_COLS)
-}
+const getRawDonors = unstable_cache(
+  () => fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, 'updated_at assets { public_url }'),
+  ['pm-raw-donors'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawDonations = unstable_cache(
+  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
+  ['pm-raw-donations'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawDonationsLean = unstable_cache(
+  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS_LEAN),
+  ['pm-raw-donations-lean'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawCommitments = unstable_cache(
+  () => fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
+  ['pm-raw-commitments'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawRates = unstable_cache(
+  () => fetchAllItems(RATES_BOARD_ID, RATE_COLS),
+  ['pm-raw-rates'], { revalidate: 3600, tags: ['monday-data'] }
+)
 
 // ----------------------------------------------------------------------------
 // USD conversion using each record's frozen rate
