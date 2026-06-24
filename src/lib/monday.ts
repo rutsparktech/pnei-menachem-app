@@ -154,26 +154,17 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
 
 //הוספה של אבי ברונר
 //המטר הלהביא רק את התרומות שלה תרום הספציפי
-async function fetchItemsByRelation(
-  boardId: string, relationColId: string, donorId: string, colIdList: string, extra = ''
-): Promise<RawItem[]> {
-  const data = await mondayQuery(
-    `query ($boardId: ID!, $donorId: String!) {
-      boards(ids: [$boardId]) {
-        items_page(
-          limit: 100,
-          query_params: { rules: [{
-            column_id: "${relationColId}",
-            compare_value: [$donorId],
-            operator: any_of
-          }] }
-        ) { items { id name ${extra} column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} } } }
-      }
-    }`,
-    { boardId, donorId }
-  )
-  return data.boards[0]?.items_page?.items ?? []
+async function fetchItemsByRelation(boardId, relationColId, donorId, colIdList, extra='') {
+  const data = await mondayQuery(`{
+    boards(ids: [${boardId}]) {
+      items_page(limit: 100, query_params: { rules: [{
+        column_id: "${relationColId}", compare_value: ["${donorId}"], operator: any_of
+      }] }) { items { id name ${extra} column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} } } }
+    }
+  }`)
+  return data.boards?.[0]?.items_page?.items ?? []
 }
+
 
 
 // ----------------------------------------------------------------------------
