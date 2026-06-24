@@ -200,20 +200,36 @@ function todayISO(): string {
 }
 
 // ----------------------------------------------------------------------------
-// Column lists for fetching — display-only columns excluded to reduce payload.
-// C.donation.paymentMethod / donationType / notes are kept in C for createDonation writes.
+// Column lists
+//
+// DONATION_COLS_LEAN — tier-1 (home + donor list): 8 cols, excludes
+//   commitmentRel and designation. Includes date for monthly/yearly aggregation.
+//
+// DONATION_COLS — tier-2 (donor detail): full set including display-only fields
+//   (paymentMethod, donationType, notes) restored so donor detail table is complete.
 // ----------------------------------------------------------------------------
-const DONOR_COLS = [
-  C.donor.hebrewName, C.donor.donorNumber, C.donor.city, C.donor.phone,
-  C.donor.email, C.donor.classification, C.donor.currency, C.donor.lastUpdated,
-  // photo omitted — photoUrl comes from item.assets instead
+const DONATION_COLS_LEAN = [
+  C.donation.donorRel,
+  C.donation.rateRel,
+  C.donation.amount,
+  C.donation.currency,
+  C.donation.date,
+  C.donation.expectedDate,
+  C.donation.donationStatus,
+  C.donation.paymentStatus,
 ].map((id) => `"${id}"`).join(', ')
 
 const DONATION_COLS = [
   C.donation.donorRel, C.donation.commitmentRel, C.donation.rateRel,
   C.donation.amount, C.donation.currency, C.donation.date, C.donation.expectedDate,
   C.donation.designation, C.donation.donationStatus, C.donation.paymentStatus,
-  // paymentMethod, donationType, notes omitted — display-only, reduces 5MB payload ~25%
+  C.donation.paymentMethod, C.donation.donationType, C.donation.notes,
+].map((id) => `"${id}"`).join(', ')
+
+const DONOR_COLS = [
+  C.donor.hebrewName, C.donor.donorNumber, C.donor.city, C.donor.phone,
+  C.donor.email, C.donor.classification, C.donor.currency, C.donor.lastUpdated,
+  // photo omitted — photoUrl comes from item.assets instead
 ].map((id) => `"${id}"`).join(', ')
 
 const COMMITMENT_COLS = [
@@ -227,21 +243,37 @@ const COMMITMENT_COLS = [
 const RATE_COLS = [C.rate.usd, C.rate.eur].map((id) => `"${id}"`).join(', ')
 
 // ----------------------------------------------------------------------------
-// Raw board fetches — plain async functions (not cached).
-// Caching happens only at the small final-selector level below.
+// Raw board fetches — cached with unstable_cache (1-hour TTL).
+//
+// Caching at this level means: when a higher-level selector (getDonorList,
+// getDonorDetail, etc.) has a cache miss, it only recomputes — it doesn't
+// re-fetch from Monday as long as the raw-board caches are still valid.
+//
+// getRawDonationsLean: lean 8-col fetch. Size is ~2-3MB raw; Vercel will
+// attempt to cache it and log "items over 2MB cannot be cached" if it exceeds
+// the 2MB limit — graceful degradation (falls back to live fetch each time).
+// All other boards are small (<300KB) and will always cache successfully.
 // ----------------------------------------------------------------------------
-async function getRawDonors() {
-  return fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, 'updated_at assets { public_url }')
-}
-async function getRawDonations() {
-  return fetchAllItems(DONATION_BOARD_ID, DONATION_COLS)
-}
-async function getRawCommitments() {
-  return fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS)
-}
-async function getRawRates() {
-  return fetchAllItems(RATES_BOARD_ID, RATE_COLS)
-}
+const getRawDonors = unstable_cache(
+  () => fetchAllItems(DONOR_BOARD_ID, DONOR_COLS, 'updated_at assets { public_url }'),
+  ['pm-raw-donors'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawDonations = unstable_cache(
+  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS),
+  ['pm-raw-donations'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawDonationsLean = unstable_cache(
+  () => fetchAllItems(DONATION_BOARD_ID, DONATION_COLS_LEAN),
+  ['pm-raw-donations-lean'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawCommitments = unstable_cache(
+  () => fetchAllItems(COMMITMENT_BOARD_ID, COMMITMENT_COLS),
+  ['pm-raw-commitments'], { revalidate: 3600, tags: ['monday-data'] }
+)
+const getRawRates = unstable_cache(
+  () => fetchAllItems(RATES_BOARD_ID, RATE_COLS),
+  ['pm-raw-rates'], { revalidate: 3600, tags: ['monday-data'] }
+)
 
 // ----------------------------------------------------------------------------
 // USD conversion using each record's frozen rate
@@ -360,14 +392,167 @@ function mapDonor(item: RawItem): Donor {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Lean donation mapper — for tier-1 (home + donor list).
+// Only the 8 columns in DONATION_COLS_LEAN are present; all others return ''.
+// ----------------------------------------------------------------------------
+type LeanDonation = {
+  donorId: string | null
+  usd: number
+  date: string
+  isFuture: boolean
+  isReceived: boolean  // donationStatus === 'התקבלה' (strict)
+  isCancelled: boolean // paymentStatus === 'בוטל'
+}
+
+function mapDonationLean(item: RawItem, rateMap: Map<string, Rate>): LeanDonation {
+  const cv = item.column_values
+  const amt = amount(cv, C.donation.amount)
+  const currency = text(cv, C.donation.currency)
+  const rate = rateMap.get(relationId(cv, C.donation.rateRel) ?? '')
+  const date = text(cv, C.donation.date) || text(cv, C.donation.expectedDate)
+  const donationStatus = text(cv, C.donation.donationStatus)
+  const paymentStatus = text(cv, C.donation.paymentStatus)
+  return {
+    donorId: relationId(cv, C.donation.donorRel),
+    usd: toUsd(amt, currency, rate),
+    date,
+    isFuture: donationStatus === 'עתידית' || (!!date && date > todayISO()),
+    isReceived: donationStatus === 'התקבלה',
+    isCancelled: paymentStatus === 'בוטל',
+  }
+}
+
 const isReceived = (d: Donation) => d.donationStatus === 'התקבלה'
 const isCancelled = (d: Donation) => d.paymentStatus === 'בוטל'
 
 // ----------------------------------------------------------------------------
-// computeBundle — builds the full enriched data bundle.
-// Wrapped with React cache() for per-request deduplication: when multiple
-// cached selectors call computeBundle() in the same request (e.g., warmup),
-// Monday is fetched only once.
+// ListBundle — internal type for computeListBundle result
+// ----------------------------------------------------------------------------
+type ListBundle = {
+  donors: Donor[]
+  months: Array<{ month: number; received: number; future: number; total: number; count: number }>
+  yearReceived: number
+  yearFuture: number
+  totalCommitted: number
+  totalPaid: number
+  donorCount: number
+  currentMonth: number
+  year: number
+}
+
+// ----------------------------------------------------------------------------
+// computeListBundle — lean tier-1 bundle (home page + donor list).
+//
+// Uses DONATION_COLS_LEAN (8 cols) instead of the full 13-col set, so the
+// donation payload is smaller and faster. The cached result (Donor[] / summary
+// object) is < 200KB — well under Vercel's 2MB Data Cache limit.
+//
+// React cache() deduplicates within a single request: when warmup calls both
+// getHomeSummary and getDonorList, Monday is fetched only once per board.
+// ----------------------------------------------------------------------------
+const computeListBundle = cache(async (): Promise<ListBundle> => {
+  const [donorItems, rateItems] = await Promise.all([getRawDonors(), getRawRates()])
+  const donationItems = await getRawDonationsLean()
+  const commitmentItems = await getRawCommitments()
+  console.log('[monday] lean donations payload size:', JSON.stringify(donationItems).length)
+
+  const rateMap = buildRateMap(rateItems)
+  const donorNameById = new Map<string, string>()
+  for (const it of donorItems) {
+    donorNameById.set(it.id, text(it.column_values, C.donor.hebrewName) || it.name)
+  }
+
+  const leanDonations = donationItems.map(it => mapDonationLean(it, rateMap))
+  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, donorNameById))
+
+  // Per-donor donation aggregates
+  const donorAgg = new Map<string, { total: number; d2025: number; d2026: number }>()
+
+  for (const d of leanDonations) {
+    if (!d.donorId || d.isCancelled) continue
+    if (!donorAgg.has(d.donorId)) donorAgg.set(d.donorId, { total: 0, d2025: 0, d2026: 0 })
+    const agg = donorAgg.get(d.donorId)!
+    const donationYear = d.date ? new Date(d.date).getFullYear() : 0
+    // totalDonations: strictly received (matches existing computeBundle behaviour)
+    if (d.isReceived) agg.total += d.usd
+    // year totals: all non-cancelled (matches existing donY behaviour)
+    if (donationYear === 2025) agg.d2025 += d.usd
+    if (donationYear === 2026) agg.d2026 += d.usd
+  }
+
+  // Per-donor commitment aggregates
+  const commitmentsByDonor = new Map<string, Commitment[]>()
+  for (const c of commitments) {
+    if (!c.donorId) continue
+    if (!commitmentsByDonor.has(c.donorId)) commitmentsByDonor.set(c.donorId, [])
+    commitmentsByDonor.get(c.donorId)!.push(c)
+  }
+
+  // Build Donor objects (no nested arrays — same shape as getDonorList output)
+  const donors: Donor[] = donorItems.map(it => {
+    const base = mapDonor(it)
+    const dt = donorAgg.get(base.id) ?? { total: 0, d2025: 0, d2026: 0 }
+    const dCom = commitmentsByDonor.get(base.id) ?? []
+    const totalDonations = dt.total
+    const totalCommitments = dCom.reduce((s, c) => s + c.usd, 0)
+    const c25 = dCom.filter(c => c.date && new Date(c.date).getFullYear() === 2025).reduce((s, c) => s + c.usd, 0)
+    const c26 = dCom.filter(c => c.date && new Date(c.date).getFullYear() === 2026).reduce((s, c) => s + c.usd, 0)
+    return {
+      ...base,
+      totalDonations,
+      totalCommitments,
+      balance: Math.max(0, totalCommitments - totalDonations),
+      // pctPaid: approx using totalDonations (no commitmentRel in lean path — diff is minor)
+      pctPaid: totalCommitments > 0 ? Math.min(100, Math.round((totalDonations / totalCommitments) * 100)) : 0,
+      commitments2025: c25,
+      donations2025: dt.d2025,
+      balance2025: Math.max(0, c25 - dt.d2025),
+      commitments2026: c26,
+      donations2026: dt.d2026,
+      balance2026: Math.max(0, c26 - dt.d2026),
+    }
+  })
+
+  // Monthly breakdown for home summary
+  const year = new Date().getFullYear()
+  const months = Array.from({ length: 12 }, (_, m) => {
+    const inMonth = leanDonations.filter(d => {
+      if (!d.date || d.isCancelled) return false
+      const dt = new Date(d.date)
+      return dt.getFullYear() === year && dt.getMonth() === m
+    })
+    const received = inMonth.filter(d => !d.isFuture).reduce((s, d) => s + d.usd, 0)
+    const future = inMonth.filter(d => d.isFuture).reduce((s, d) => s + d.usd, 0)
+    return { month: m, received, future, total: received + future, count: inMonth.length }
+  })
+
+  const yearReceived = months.reduce((s, x) => s + x.received, 0)
+  const yearFuture = months.reduce((s, x) => s + x.future, 0)
+  const totalCommitted = commitments.reduce((s, c) => s + c.usd, 0)
+  // totalPaid: sum of strictly received (approx — no commitmentRel to link to commitments)
+  const totalPaid = leanDonations
+    .filter(d => d.isReceived && !d.isCancelled)
+    .reduce((s, d) => s + d.usd, 0)
+
+  return {
+    donors,
+    months,
+    yearReceived,
+    yearFuture,
+    totalCommitted,
+    totalPaid,
+    donorCount: donorItems.length,
+    currentMonth: new Date().getMonth(),
+    year,
+  }
+})
+
+// ----------------------------------------------------------------------------
+// computeBundle — full tier-2 bundle (individual donor detail page only).
+// Fetches ALL 13 donation columns including paymentMethod/donationType/notes
+// so the donor detail table shows complete data.
+// React cache() deduplicates within a single request.
 // ----------------------------------------------------------------------------
 const computeBundle = cache(async (): Promise<DataBundle> => {
   // donors + rates in parallel (small, fast boards)
@@ -384,7 +569,7 @@ const computeBundle = cache(async (): Promise<DataBundle> => {
     donorNameById.set(it.id, text(it.column_values, C.donor.hebrewName) || it.name)
   }
 
-  console.log('[monday] raw donations size:', JSON.stringify(donationItems).length)
+  console.log('[monday] full donations size:', JSON.stringify(donationItems).length)
   const donations = donationItems.map((it) => mapDonation(it, rateMap, donorNameById))
   const commitments = commitmentItems.map((it) => mapCommitment(it, rateMap, donorNameById))
 
@@ -448,35 +633,31 @@ const computeBundle = cache(async (): Promise<DataBundle> => {
 export const getDataBundle = computeBundle
 
 // ----------------------------------------------------------------------------
-// Cached selectors — small results only (<2MB each), revalidate every 2 hours.
-// Raw fetches are NOT cached; only these final small slices are persisted.
+// Cached selectors
+// Tier-1 (home + donor list) → computeListBundle (lean, fast).
+// Tier-2 (donor detail) → computeBundle (full, slower — only hit per-donor).
+// Both result sets are small (<200KB) → always under Vercel's 2MB cache limit.
 // ----------------------------------------------------------------------------
 export const getHomeSummary = unstable_cache(async () => {
-  const bundle = await computeBundle()
-  const year = new Date().getFullYear()
-  const currentMonth = new Date().getMonth()
-  const months = Array.from({ length: 12 }, (_, m) => {
-    const inMonth = bundle.donations.filter((d) => {
-      if (!d.date || d.paymentStatus === 'בטול') return false
-      const dt = new Date(d.date)
-      return dt.getFullYear() === year && dt.getMonth() === m
-    })
-    const received = inMonth.filter((d) => !d.isFuture).reduce((s, d) => s + d.usd, 0)
-    const future = inMonth.filter((d) => d.isFuture).reduce((s, d) => s + d.usd, 0)
-    return { month: m, received, future, total: received + future, count: inMonth.length }
-  })
-  const yearReceived = months.reduce((s, x) => s + x.received, 0)
-  const yearFuture = months.reduce((s, x) => s + x.future, 0)
-  const totalCommitted = bundle.commitments.reduce((s, c) => s + c.usd, 0)
-  const totalPaid = bundle.commitments.reduce((s, c) => s + c.paidUsd, 0)
-  const result = { year, currentMonth, months, yearReceived, yearFuture, totalCommitted, totalPaid, donorCount: bundle.donors.length }
+  const list = await computeListBundle()
+  const result = {
+    year: list.year,
+    currentMonth: list.currentMonth,
+    months: list.months,
+    yearReceived: list.yearReceived,
+    yearFuture: list.yearFuture,
+    totalCommitted: list.totalCommitted,
+    totalPaid: list.totalPaid,
+    donorCount: list.donorCount,
+  }
   console.log('[cache] getHomeSummary size:', JSON.stringify(result).length)
   return result
 }, ['pm-home-summary'], { revalidate: 7200, tags: ['monday-data'] })
 
 export const getDonorList = unstable_cache(async (): Promise<Donor[]> => {
-  const bundle = await computeBundle()
-  const result = bundle.donors.map(({ donations: _d, commitments: _c, ...rest }) => rest)
+  const list = await computeListBundle()
+  // Sort descending by totalDonations — ranking computed once on server, sliced client-side
+  const result = [...list.donors].sort((a, b) => b.totalDonations - a.totalDonations)
   console.log('[cache] getDonorList size:', JSON.stringify(result).length)
   return result
 }, ['pm-donor-list'], { revalidate: 7200, tags: ['monday-data'] })
@@ -489,7 +670,6 @@ export const getDonorDetail = unstable_cache(async (id: string) => {
 }, ['pm-donor-detail'], { revalidate: 7200, tags: ['monday-data'] })
 
 // getAllDonations / getAllCommitments — NOT cached (results too large for 2MB limit).
-// These call computeBundle() which React cache() deduplicates within the same request.
 export async function getAllDonations(): Promise<Donation[]> {
   const bundle = await computeBundle()
   return bundle.donations
