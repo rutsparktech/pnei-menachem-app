@@ -676,6 +676,11 @@ export async function getDonorById(id: string): Promise<DonorWithDetails | null>
   return getDonorDetail(id)
 }
 
+export async function getDonorHeader(id: string): Promise<Donor | null> {
+  const donors = await getDonorList()
+  return donors.find((d) => d.id === id) ?? null
+}
+
 export async function fetchAllDonorsWithDetails(): Promise<DonorWithDetails[]> {
   const { donors } = await computeBundle()
   return donors
