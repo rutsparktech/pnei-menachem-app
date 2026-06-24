@@ -648,6 +648,8 @@ const computeBundle = cache(async (): Promise<DataBundle> => {
 //המטרה להביא רק את התורם הספציפי ולא את כל התורמים
 export const getDataBundle = computeBundle
 
+/*
+גרסא קודמת
 async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
   const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
     mondayQuery(`{ items(ids:[${id}]){ id name updated_at assets{public_url}
@@ -666,6 +668,58 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   // ...אותו linking של paid/remaining/pct ואותה אגרגציה כמו ב-computeBundle,
   //    רק שעכשיו זה רץ על קומץ רשומות במקום על כל ה-DB
   return { ...mapDonor(donorItem), donations, commitments }
+}
+*/
+//גרסא חדשה אבי ברונר
+async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
+  const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
+    mondayQuery(`{ items(ids:[${id}]){ id name updated_at assets{public_url}
+       column_values(ids:[${DONOR_COLS}]){ ${COL_FRAGMENT} } } }`),
+    getRawRates(),
+    fetchItemsByRelation(DONATION_BOARD_ID,   C.donation.donorRel,   id, DONATION_COLS),
+    fetchItemsByRelation(COMMITMENT_BOARD_ID, C.commitment.donorRel, id, COMMITMENT_COLS),
+  ])
+  const donorItem = donorRes.items?.[0]
+  if (!donorItem) return null
+
+  const rateMap = buildRateMap(rateItems)
+  const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
+  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
+  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById))
+
+  // --- linking: paid / remaining / pct לכל התחייבות ---
+  const byCommitment = new Map<string, Donation[]>()
+  for (const d of donations) {
+    if (!d.commitmentId) continue
+    ;(byCommitment.get(d.commitmentId) ?? byCommitment.set(d.commitmentId, []).get(d.commitmentId)!).push(d)
+  }
+  for (const c of commitments) {
+    const linked = byCommitment.get(c.id) ?? []
+    const paid = linked.filter(d => isReceived(d) && !isCancelled(d)).reduce((s, d) => s + d.usd, 0)
+    c.paidUsd = paid
+    c.remainingUsd = Math.max(0, c.usd - paid)
+    c.pctPaid = c.usd > 0 ? Math.min(100, Math.round((paid / c.usd) * 100)) : 0
+  }
+
+  // --- אגרגציה לתורם ---
+  const totalDonations   = donations.filter(d => isReceived(d) && !isCancelled(d)).reduce((s, d) => s + d.usd, 0)
+  const totalCommitments = commitments.reduce((s, c) => s + c.usd, 0)
+  const paid             = commitments.reduce((s, c) => s + c.paidUsd, 0)
+  const yr   = (date: string) => (date ? new Date(date).getFullYear() : 0)
+  const donY = (y: number) => donations.filter(d => yr(d.date) === y && !isCancelled(d)).reduce((s, d) => s + d.usd, 0)
+  const comY = (y: number) => commitments.filter(c => yr(c.date) === y).reduce((s, c) => s + c.usd, 0)
+  const d25 = donY(2025), c25 = comY(2025), d26 = donY(2026), c26 = comY(2026)
+
+  return {
+    ...mapDonor(donorItem),
+    totalDonations, totalCommitments,
+    balance: Math.max(0, totalCommitments - totalDonations),
+    pctPaid: totalCommitments > 0 ? Math.min(100, Math.round((paid / totalCommitments) * 100)) : 0,
+    commitments2025: c25, donations2025: d25, balance2025: Math.max(0, c25 - d25),
+    commitments2026: c26, donations2026: d26, balance2026: Math.max(0, c26 - d26),
+    donations:   donations.sort((a, b) => (a.date < b.date ? 1 : -1)),
+    commitments: commitments.sort((a, b) => (a.date < b.date ? 1 : -1)),
+  }
 }
 
 export const getDonorDetail = unstable_cache(
@@ -702,13 +756,16 @@ export const getDonorList = unstable_cache(async (): Promise<Donor[]> => {
   console.log('[cache] getDonorList size:', JSON.stringify(result).length)
   return result
 }, ['pm-donor-list'], { revalidate: 7200, tags: ['monday-data'] })
-
+ 
+/*
+גרסא ישנה
 export const getDonorDetail = unstable_cache(async (id: string) => {
   const bundle = await computeDonorBundle(id)
   const result = bundle.donors.find((d) => d.id === id) ?? null
   console.log('[cache] getDonorDetail size:', JSON.stringify(result).length)
   return result
 }, ['pm-donor-detail'], { revalidate: 7200, tags: ['monday-data'] })
+*/
 
 // getAllDonations / getAllCommitments — NOT cached (results too large for 2MB limit).
 export async function getAllDonations(): Promise<Donation[]> {
