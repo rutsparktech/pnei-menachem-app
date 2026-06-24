@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { Suspense } from 'react'
 import { connection } from 'next/server'
 import { getAllDonors } from '@/lib/api'
@@ -74,12 +73,6 @@ export default function Dashboard({
 }) {
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto">
-      <div className="mb-3">
-        <Link href="/" className="text-sm text-primary hover:underline">
-          ← חזרה לדשבורד
-        </Link>
-      </div>
-
       <div className="mb-5">
         <h1 className="text-2xl font-bold text-primary mb-1">שלום</h1>
         <p className="text-sm text-muted">ניהול תורמים · קרן פני מנחם</p>
