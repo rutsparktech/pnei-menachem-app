@@ -7,8 +7,9 @@ import { getHomeSummary, getDonorList } from '@/lib/monday'
 export async function GET(req: NextRequest) {
   // Vercel Cron automatically adds Authorization: Bearer <CRON_SECRET>.
   const secret = process.env.CRON_SECRET
+  const auth = req.headers.get('authorization')
+  console.log('[warmup] auth header present:', !!auth, '| CRON_SECRET set:', !!secret, '| match:', auth === `Bearer ${secret}`)
   if (secret) {
-    const auth = req.headers.get('authorization')
     if (auth !== `Bearer ${secret}`) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
