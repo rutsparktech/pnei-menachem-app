@@ -152,6 +152,30 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
   return items
 }
 
+//הוספה של אבי ברונר
+//המטר הלהביא רק את התרומות שלה תרום הספציפי
+async function fetchItemsByRelation(
+  boardId: string, relationColId: string, donorId: string, colIdList: string, extra = ''
+): Promise<RawItem[]> {
+  const data = await mondayQuery(
+    `query ($boardId: ID!, $donorId: String!) {
+      boards(ids: [$boardId]) {
+        items_page(
+          limit: 100,
+          query_params: { rules: [{
+            column_id: "${relationColId}",
+            compare_value: [$donorId],
+            operator: any_of
+          }] }
+        ) { items { id name ${extra} column_values(ids: [${colIdList}]) { ${COL_FRAGMENT} } } }
+      }
+    }`,
+    { boardId, donorId }
+  )
+  return data.boards[0]?.items_page?.items ?? []
+}
+
+
 // ----------------------------------------------------------------------------
 // Small helpers
 // ----------------------------------------------------------------------------
@@ -619,7 +643,35 @@ const computeBundle = cache(async (): Promise<DataBundle> => {
 })
 
 // Public alias — keeps existing callers working
+
+//הוספה של אבי ברונר
+//המטרה להביא רק את התורם הספציפי ולא את כל התורמים
 export const getDataBundle = computeBundle
+
+async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
+  const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
+    mondayQuery(`{ items(ids:[${id}]){ id name updated_at assets{public_url}
+       column_values(ids:[${DONOR_COLS}]){ ${COL_FRAGMENT} } } }`),
+    getRawRates(),                                                    // לוח קטן, זניח
+    fetchItemsByRelation(DONATION_BOARD_ID,   C.donation.donorRel,   id, DONATION_COLS),
+    fetchItemsByRelation(COMMITMENT_BOARD_ID, C.commitment.donorRel, id, COMMITMENT_COLS),
+  ])
+  const donorItem = donorRes.items?.[0]
+  if (!donorItem) return null
+
+  const rateMap = buildRateMap(rateItems)
+  const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
+  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
+  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById))
+  // ...אותו linking של paid/remaining/pct ואותה אגרגציה כמו ב-computeBundle,
+  //    רק שעכשיו זה רץ על קומץ רשומות במקום על כל ה-DB
+  return { ...mapDonor(donorItem), donations, commitments }
+}
+
+export const getDonorDetail = unstable_cache(
+  computeDonorBundle, ['pm-donor-detail-v2'], { revalidate: 7200, tags: ['monday-data'] }
+)
+
 
 // ----------------------------------------------------------------------------
 // Cached selectors
@@ -652,7 +704,7 @@ export const getDonorList = unstable_cache(async (): Promise<Donor[]> => {
 }, ['pm-donor-list'], { revalidate: 7200, tags: ['monday-data'] })
 
 export const getDonorDetail = unstable_cache(async (id: string) => {
-  const bundle = await computeBundle()
+  const bundle = await computeDonorBundle(id)
   const result = bundle.donors.find((d) => d.id === id) ?? null
   console.log('[cache] getDonorDetail size:', JSON.stringify(result).length)
   return result
