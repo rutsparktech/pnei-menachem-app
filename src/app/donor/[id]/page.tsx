@@ -7,6 +7,7 @@ import FinancialCard from '@/components/FinancialCard'
 import { usd, formatDate } from '@/lib/format'
 
 export const maxDuration = 300
+export const revalidate = 7200
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
 
