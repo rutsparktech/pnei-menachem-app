@@ -87,7 +87,7 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>, a
       headers: { 'Content-Type': 'application/json', Authorization: token, 'API-Version': '2025-04' },
       body: JSON.stringify({ query, variables }),
       cache: 'no-store',
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(90000),
     })
   } catch (err) {
     console.warn(`[monday] fetch error (attempt ${attempt + 1}):`, (err as Error).message)
@@ -130,7 +130,7 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
 
   const initial = await mondayQuery(`{
     boards(ids: [${boardId}]) {
-      items_page(limit: 500) { cursor items { ${itemBlock} } }
+      items_page(limit: 200) { cursor items { ${itemBlock} } }
     }
   }`)
   const page = initial.boards[0]?.items_page ?? {}
@@ -142,7 +142,7 @@ async function fetchAllItems(boardId: string, colIdList: string, extraItemFields
       `query NextPage($cursor: String!, $limit: Int!) {
         next_items_page(limit: $limit, cursor: $cursor) { cursor items { ${itemBlock} } }
       }`,
-      { cursor, limit: 500 }
+      { cursor, limit: 200 }
     )
     const np = next.next_items_page ?? {}
     items.push(...(np.items ?? []))
