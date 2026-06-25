@@ -16,22 +16,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       credentials: { username: {}, password: {} },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) return null
+        if (!credentials?.username || !credentials?.password) {
+          console.error('[auth] missing credentials')
+          return null
+        }
 
-        const { data: user } = await supabase()
+        console.error('[auth] looking up user:', credentials.username)
+
+        const { data: user, error } = await supabase()
           .from('users')
           .select('id, display_name, email, password_hash')
           .eq('username', credentials.username as string)
           .single()
 
-        if (!user) return null
+        if (error) {
+          console.error('[auth] supabase error:', error.code, error.message)
+          return null
+        }
+        if (!user) {
+          console.error('[auth] user not found')
+          return null
+        }
+
+        console.error('[auth] user found, checking password')
 
         const valid = await bcrypt.compare(
           credentials.password as string,
           user.password_hash
         )
-        if (!valid) return null
 
+        if (!valid) {
+          console.error('[auth] wrong password. hash in db:', user.password_hash.slice(0, 20))
+          return null
+        }
+
+        console.error('[auth] login success:', user.display_name)
         return { id: user.id, name: user.display_name, email: user.email }
       },
     }),
