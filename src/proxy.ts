@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const PUBLIC = ['/login', '/api/auth', '/api/warmup', '/api/webhook']
+const PUBLIC_PATHS = ['/login', '/api/auth', '/api/warmup', '/api/webhook']
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (PUBLIC.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next()
   }
 
-  // NextAuth v5 session cookie (http = authjs.session-token, https = __Secure-authjs.session-token)
   const hasSession =
     request.cookies.has('authjs.session-token') ||
     request.cookies.has('__Secure-authjs.session-token')
