@@ -17,37 +17,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: { username: {}, password: {} },
       async authorize(credentials) {
         try {
-          console.error('[auth] authorize called, username:', credentials?.username ?? 'EMPTY')
+          if (!credentials?.username || !credentials?.password) return null
 
-          if (!credentials?.username || !credentials?.password) {
-            console.error('[auth] missing credentials')
-            return null
-          }
+          const TABLE = 'app_users'
 
-          const { data: user, error } = await supabase()
-            .from('app_users')
+          const { data, error } = await supabase()
+            .from(TABLE)
             .select('id, display_name, email, password_hash')
             .eq('username', credentials.username as string)
             .single()
 
-          if (error) {
-            console.error('[auth] supabase error:', error.code, error.message)
-            return null
-          }
-          if (!user) {
-            console.error('[auth] user not found')
-            return null
-          }
+          console.log('[auth-debug] supabase user lookup', {
+            resolvedUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING',
+            table: TABLE,
+            errorCode: error?.code,
+            errorMessage: error?.message,
+            errorDetails: (error as any)?.details,
+            errorHint: (error as any)?.hint,
+            gotUser: !!data,
+          })
 
-          console.error('[auth] user found:', user.display_name, '| hash prefix:', user.password_hash?.slice(0, 10))
+          if (error || !data) return null
 
-          const valid = await bcrypt.compare(credentials.password as string, user.password_hash)
-          console.error('[auth] bcrypt result:', valid)
-
+          const valid = await bcrypt.compare(credentials.password as string, data.password_hash)
           if (!valid) return null
-          return { id: user.id, name: user.display_name, email: user.email }
+
+          return { id: data.id, name: data.display_name, email: data.email }
         } catch (e) {
-          console.error('[auth] EXCEPTION:', e instanceof Error ? e.message : String(e))
+          console.error('[auth-debug] EXCEPTION', e instanceof Error ? e.message : String(e))
           return null
         }
       },
