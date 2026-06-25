@@ -16,23 +16,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       credentials: { username: {}, password: {} },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) return null
+        try {
+          console.error('[auth] authorize called, username:', credentials?.username ?? 'EMPTY')
 
-        const { data: user, error } = await supabase()
-          .from('app_users')
-          .select('id, display_name, email, password_hash')
-          .eq('username', credentials.username as string)
-          .single()
+          if (!credentials?.username || !credentials?.password) {
+            console.error('[auth] missing credentials')
+            return null
+          }
 
-        if (error || !user) return null
+          const { data: user, error } = await supabase()
+            .from('app_users')
+            .select('id, display_name, email, password_hash')
+            .eq('username', credentials.username as string)
+            .single()
 
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          user.password_hash
-        )
-        if (!valid) return null
+          if (error) {
+            console.error('[auth] supabase error:', error.code, error.message)
+            return null
+          }
+          if (!user) {
+            console.error('[auth] user not found')
+            return null
+          }
 
-        return { id: user.id, name: user.display_name, email: user.email }
+          console.error('[auth] user found:', user.display_name, '| hash prefix:', user.password_hash?.slice(0, 10))
+
+          const valid = await bcrypt.compare(credentials.password as string, user.password_hash)
+          console.error('[auth] bcrypt result:', valid)
+
+          if (!valid) return null
+          return { id: user.id, name: user.display_name, email: user.email }
+        } catch (e) {
+          console.error('[auth] EXCEPTION:', e instanceof Error ? e.message : String(e))
+          return null
+        }
       },
     }),
   ],
