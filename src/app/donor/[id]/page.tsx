@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { getDonorHeader, getDonorDetail } from '@/lib/monday'
 import { ClassificationBadge } from '@/components/StatusBadge'
 import FinancialCard from '@/components/FinancialCard'
+import ScrollToTop from '@/components/ScrollToTop'
 import { usd, formatDate } from '@/lib/format'
 
 export const maxDuration = 300
@@ -145,6 +146,8 @@ export default async function DonorPage({
   const { id } = await params
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 pb-24">
+      <ScrollToTop />
+
       <Suspense fallback={<HeaderSkeleton />}>
         <DonorHeader id={id} />
       </Suspense>
