@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   )
 
   const { error } = await supabase
-    .from('users')
+    .from('app_users')
     .update({ password_hash: hash })
     .eq('username', username)
 
