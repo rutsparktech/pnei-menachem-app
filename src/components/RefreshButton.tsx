@@ -13,16 +13,24 @@ function timeAgo(date: Date): string {
 export default function RefreshButton({ lastUpdated }: { lastUpdated: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [displayTime, setDisplayTime] = useState(() => new Date(lastUpdated))
+  const [syncTime, setSyncTime] = useState(() => new Date(lastUpdated))
+  const [label, setLabel] = useState(() => timeAgo(new Date(lastUpdated)))
 
   useEffect(() => {
-    setDisplayTime(new Date(lastUpdated))
+    const date = new Date(lastUpdated)
+    setSyncTime(date)
+    setLabel(timeAgo(date))
   }, [lastUpdated])
+
+  useEffect(() => {
+    const id = setInterval(() => setLabel(timeAgo(syncTime)), 60_000)
+    return () => clearInterval(id)
+  }, [syncTime])
 
   return (
     <div className="flex items-center justify-between mb-5">
       <p className="text-xs text-muted">
-        עודכן לאחרונה: {timeAgo(displayTime)}
+        עודכן לאחרונה: {label}
       </p>
       <button
         onClick={() => startTransition(() => { router.refresh() })}
