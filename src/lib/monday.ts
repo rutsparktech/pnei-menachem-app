@@ -202,16 +202,24 @@ function relationId(cv: RawCol[], id: string): string | null {
   return null
 }
 // All linked ids in a board_relation column (relationId returns only the first).
+// Merges both linked_items and value JSON — Monday.com caps linked_items at ~10-15,
+// while value contains all IDs. Union of both sources gives the complete list.
 function linkedIds(cv: RawCol[], id: string): string[] {
   const c = col(cv, id)
-  if (c?.linked_items?.length) return c.linked_items.map((li) => li.id)
+  const seen = new Set<string>()
+  for (const li of c?.linked_items ?? []) {
+    if (li.id) seen.add(li.id)
+  }
   if (c?.value) {
     try {
-      const ids = JSON.parse(c.value)?.linkedPulseIds ?? []
-      return ids.map((x: any) => String(x?.linkedPulseId ?? x))
+      const raw = JSON.parse(c.value)?.linkedPulseIds ?? []
+      for (const x of raw) {
+        const idStr = String(x?.linkedPulseId ?? x)
+        if (idStr && idStr !== 'undefined' && idStr !== 'null') seen.add(idStr)
+      }
     } catch { /* ignore */ }
   }
-  return []
+  return [...seen]
 }
 
 const CANON = new Set<string>(DESIGNATIONS)
