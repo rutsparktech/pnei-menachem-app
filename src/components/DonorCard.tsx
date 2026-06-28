@@ -46,7 +46,7 @@ export default function DonorCard({ donor }: { donor: Donor }) {
   return (
     <Link
       href={`/donor/${donor.id}`}
-      className="block bg-surface rounded-[--radius-card] border border-border shadow-sm p-4 hover:shadow-md hover:border-primary/30 transition-all active:scale-[0.98]"
+      className="block bg-surface rounded-[--radius-card] border border-border/50 shadow-md p-4 hover:shadow-xl hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-3">
