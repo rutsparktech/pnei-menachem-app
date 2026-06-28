@@ -25,7 +25,6 @@ export default function DonorListClient({ donors }: { donors: Donor[] }) {
           />
         ))}
       </div>
-
       {remaining > 0 && (
         <button
           onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
@@ -34,7 +33,6 @@ export default function DonorListClient({ donors }: { donors: Donor[] }) {
           טען עוד ({remaining} נוספים)
         </button>
       )}
-
       <DonorDrawer donor={quickViewDonor} onClose={() => setQuickViewDonor(null)} />
     </>
   )

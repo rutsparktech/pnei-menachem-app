@@ -32,13 +32,10 @@ export default function DonorDrawer({
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm backdrop-fade-in"
         onClick={onClose}
       />
-
-      {/* Drawer */}
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col drawer-slide-in">
 
         {/* Header */}
@@ -67,8 +64,6 @@ export default function DonorDrawer({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-
-          {/* Tags */}
           <div className="flex flex-wrap gap-2">
             {donor.classification && (
               <span className="text-xs font-semibold px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20">
@@ -87,7 +82,6 @@ export default function DonorDrawer({
             )}
           </div>
 
-          {/* Totals */}
           <div className="bg-primary rounded-2xl p-5">
             <p className="text-white/60 text-xs uppercase tracking-widest mb-1">סה"כ תרומות</p>
             <p className="text-4xl font-bold text-white">{fUSD(donor.totalDonations)}</p>
@@ -108,7 +102,6 @@ export default function DonorDrawer({
             </div>
           </div>
 
-          {/* Year breakdown */}
           {[
             { year: '2025', c: donor.commitments2025, d: donor.donations2025, b: donor.balance2025 },
             { year: '2026', c: donor.commitments2026, d: donor.donations2026, b: donor.balance2026 },
@@ -117,13 +110,13 @@ export default function DonorDrawer({
               <div className="bg-background px-4 py-2 border-b border-border">
                 <p className="font-bold text-primary text-sm">{year}</p>
               </div>
-              <div className="grid grid-cols-3 divide-x divide-x-reverse divide-border text-center">
+              <div className="grid grid-cols-3 text-center">
                 {[
                   { label: 'התחייבויות', value: fUSD(c), cls: 'text-text' },
                   { label: 'תרומות', value: fUSD(d), cls: 'text-text' },
                   { label: 'יתרה', value: fUSD(b), cls: b > 0 ? 'text-cancelled' : 'text-paid' },
-                ].map(({ label, value, cls }) => (
-                  <div key={label} className="px-3 py-3">
+                ].map(({ label, value, cls }, i) => (
+                  <div key={label} className={`px-3 py-3 ${i > 0 ? 'border-r border-border' : ''}`}>
                     <p className="text-[10px] text-muted mb-1">{label}</p>
                     <p className={`text-sm font-bold ${cls}`}>{value}</p>
                   </div>
@@ -133,7 +126,6 @@ export default function DonorDrawer({
           ))}
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t border-border bg-background flex-shrink-0">
           <Link
             href={`/donor/${donor.id}`}

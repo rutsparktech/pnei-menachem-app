@@ -27,7 +27,6 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>
 }) {
   const { error } = await searchParams
-
   return (
     <div className="min-h-[calc(100dvh-9rem)] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
@@ -38,7 +37,6 @@ export default async function LoginPage({
           <h1 className="text-2xl font-bold text-white">פני מנחם</h1>
           <p className="text-sm text-white/60 mt-1">כניסה למערכת ניהול התורמים</p>
         </div>
-
         <LoginForm action={loginAction} error={!!error} />
       </div>
     </div>
