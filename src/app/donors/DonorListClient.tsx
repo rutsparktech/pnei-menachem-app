@@ -2,20 +2,27 @@
 
 import { useState } from 'react'
 import DonorCard from '@/components/DonorCard'
+import DonorDrawer from '@/components/DonorDrawer'
 import type { Donor } from '@/lib/types'
 
 const PAGE_SIZE = 20
 
 export default function DonorListClient({ donors }: { donors: Donor[] }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [quickViewDonor, setQuickViewDonor] = useState<Donor | null>(null)
+
   const visible = donors.slice(0, visibleCount)
   const remaining = donors.length - visibleCount
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {visible.map((donor) => (
-          <DonorCard key={donor.id} donor={donor} />
+          <DonorCard
+            key={donor.id}
+            donor={donor}
+            onQuickView={() => setQuickViewDonor(donor)}
+          />
         ))}
       </div>
 
@@ -27,6 +34,8 @@ export default function DonorListClient({ donors }: { donors: Donor[] }) {
           טען עוד ({remaining} נוספים)
         </button>
       )}
+
+      <DonorDrawer donor={quickViewDonor} onClose={() => setQuickViewDonor(null)} />
     </>
   )
 }
