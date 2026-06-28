@@ -26,7 +26,9 @@ export default function RootLayout({
       <body
         className="min-h-screen flex flex-col"
         style={{
-          background: 'linear-gradient(160deg, #2d1520 0%, #1a0c14 50%, #221508 100%)',
+          background:
+            'radial-gradient(ellipse 120% 55% at 50% -5%, rgba(212,175,55,0.22) 0%, transparent 55%), ' +
+            'linear-gradient(165deg, #4d1e32 0%, #3a1525 30%, #251018 60%, #3a2010 100%)',
           backgroundAttachment: 'fixed',
         }}
       >
