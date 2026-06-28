@@ -1,8 +1,11 @@
 import { connection } from 'next/server'
+import { auth } from '@/auth'
 import { fetchAllDonorsWithDetails } from '@/lib/monday'
 
 export async function GET() {
   await connection()
+  const session = await auth()
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const donors = await fetchAllDonorsWithDetails()
     const commitments = donors.flatMap((d) =>
