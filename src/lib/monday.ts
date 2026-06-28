@@ -203,16 +203,23 @@ function relationId(cv: RawCol[], id: string): string | null {
   return null
 }
 // All linked ids in a board_relation column (relationId returns only the first).
+// Monday.com API may truncate linked_items — value.linkedPulseIds contains all IDs.
+// We union both sources to guarantee completeness even if one is partial.
 function linkedIds(cv: RawCol[], id: string): string[] {
   const c = col(cv, id)
-  if (c?.linked_items?.length) return c.linked_items.map((li) => li.id)
+  const fromItems = c?.linked_items?.map((li) => li.id) ?? []
+  let fromValue: string[] = []
   if (c?.value) {
     try {
-      const ids = JSON.parse(c.value)?.linkedPulseIds ?? []
-      return ids.map((x: any) => String(x?.linkedPulseId ?? x))
+      const parsed = JSON.parse(c.value)?.linkedPulseIds ?? []
+      fromValue = parsed.map((x: any) => String(x?.linkedPulseId ?? x))
     } catch { /* ignore */ }
   }
-  return []
+  if (fromValue.length === 0 && fromItems.length === 0) return []
+  if (fromValue.length === 0) return fromItems
+  if (fromItems.length === 0) return fromValue
+  // union — value is authoritative (all IDs), linked_items may add nothing new
+  return [...new Set([...fromValue, ...fromItems])]
 }
 
 const CANON = new Set<string>(DESIGNATIONS)
