@@ -118,10 +118,10 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>, a
   return json.data
 }
 
-type RawCol = { id: string; text: string | null; value?: string | null; linked_items?: Array<{ id: string }> }
+type RawCol = { id: string; text: string | null; value?: string | null; linked_items?: Array<{ id: string }>; linked_item_ids?: Array<string | number> }
 type RawItem = { id: string; name: string; updated_at?: string; column_values: RawCol[]; assets?: Array<{ public_url: string }> }
 
-const COL_FRAGMENT = `id text value ... on BoardRelationValue { linked_items { id } }`
+const COL_FRAGMENT = `id text value ... on BoardRelationValue { linked_item_ids linked_items { id } }`
 
 async function fetchAllItems(boardId: string, colIdList: string, extraItemFields = ''): Promise<RawItem[]> {
   const _t0 = Date.now()
@@ -202,24 +202,23 @@ function relationId(cv: RawCol[], id: string): string | null {
   return null
 }
 // All linked ids in a board_relation column (relationId returns only the first).
-// Merges both linked_items and value JSON — Monday.com caps linked_items at ~10-15,
-// while value contains all IDs. Union of both sources gives the complete list.
+// API 2025-04: linked_item_ids returns the full list without any cap.
+// linked_items is capped at ~25 items; value returns null in 2025-04.
 function linkedIds(cv: RawCol[], id: string): string[] {
   const c = col(cv, id)
-  const seen = new Set<string>()
-  for (const li of c?.linked_items ?? []) {
-    if (li.id) seen.add(li.id)
+  if (c?.linked_item_ids?.length) {
+    return c.linked_item_ids.map((x) => String(x))
+  }
+  if (c?.linked_items?.length) {
+    return c.linked_items.map((li) => li.id)
   }
   if (c?.value) {
     try {
-      const raw = JSON.parse(c.value)?.linkedPulseIds ?? []
-      for (const x of raw) {
-        const idStr = String(x?.linkedPulseId ?? x)
-        if (idStr && idStr !== 'undefined' && idStr !== 'null') seen.add(idStr)
-      }
+      const ids = JSON.parse(c.value)?.linkedPulseIds ?? []
+      return ids.map((x: any) => String(x?.linkedPulseId ?? x))
     } catch { /* ignore */ }
   }
-  return [...seen]
+  return []
 }
 
 const CANON = new Set<string>(DESIGNATIONS)
@@ -688,29 +687,32 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   return { ...mapDonor(donorItem), donations, commitments }
 }
 */
-// גרסא מתוקנת — שולפת הכל ומסננת ב-JS לפי donorId.
-// הגישה ה"הפוכה" (reverse lookup דרך relation columns) הופסקה כי Monday.com
-// מגביל את מספר ה-linked_items המוחזרים ותורמים עם 20+ תרומות נחתכים.
+// גרסא מתוקנת — reverse lookup עם linked_item_ids (API 2025-04).
+// linked_item_ids מחזיר את כל ה-IDs ללא מגבלה, בניגוד ל-linked_items שנחתך ב-~25.
 async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
-  // 1) פריט התורם + כל הלוחות — במקביל
-  const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
-    mondayQuery(`{ items(ids:[${id}]) {
-      id name updated_at assets{public_url}
-      column_values(ids:[${DONOR_COLS}]) { ${COL_FRAGMENT} }
-    } }`),
-    getRawRates(),
-    getRawDonations(),
-    getRawCommitments(),
-  ])
+  // 1) פריט התורם + עמודות הקישור — linked_item_ids מחזיר הכל
+  const donorRes = await mondayQuery(`{ items(ids:[${id}]) {
+    id name updated_at assets{public_url}
+    column_values(ids:[${DONOR_COLS}, "${C.donor.donationsRel}", "${C.donor.commitmentsRel}"]) { ${COL_FRAGMENT} }
+  } }`)
   const donorItem = donorRes.items?.[0]
   if (!donorItem) return null
 
+  // 2) IDs מלאים דרך linked_item_ids
+  const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
+  const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
+
+  // 3) שליפה לפי ID ושערים — במקביל
+  const [rateItems, donationItems, commitmentItems] = await Promise.all([
+    getRawRates(),
+    fetchItemsByIds(donationIds,   DONATION_COLS),
+    fetchItemsByIds(commitmentIds, COMMITMENT_COLS),
+  ])
+
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
-
-  // 2) סינון ב-JS לפי donorId — אמין לחלוטין, ללא תלות ב-linked_items של Monday
-  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById)).filter(d => d.donorId === id)
-  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById)).filter(c => c.donorId === id)
+  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
+  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById))
 
   // --- linking: paid / remaining / pct לכל התחייבות ---
   const byCommitment = new Map<string, Donation[]>()
