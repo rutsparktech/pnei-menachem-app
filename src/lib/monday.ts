@@ -688,31 +688,29 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   return { ...mapDonor(donorItem), donations, commitments }
 }
 */
-//גרסא חדשה אבי ברונר — reverse lookup: קוראים את מזהי התרומות/התחייבויות מתוך פריט התורם
+// גרסא מתוקנת — שולפת הכל ומסננת ב-JS לפי donorId.
+// הגישה ה"הפוכה" (reverse lookup דרך relation columns) הופסקה כי Monday.com
+// מגביל את מספר ה-linked_items המוחזרים ותורמים עם 20+ תרומות נחתכים.
 async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
-  // 1) פריט התורם + שתי עמודות הקישור שלו (תרומות / התחייבויות)
-  const donorRes = await mondayQuery(`{ items(ids:[${id}]) {
-    id name updated_at assets{public_url}
-    column_values(ids:[${DONOR_COLS}, "${C.donor.donationsRel}", "${C.donor.commitmentsRel}"]) { ${COL_FRAGMENT} }
-  } }`)
+  // 1) פריט התורם + כל הלוחות — במקביל
+  const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
+    mondayQuery(`{ items(ids:[${id}]) {
+      id name updated_at assets{public_url}
+      column_values(ids:[${DONOR_COLS}]) { ${COL_FRAGMENT} }
+    } }`),
+    getRawRates(),
+    getRawDonations(),
+    getRawCommitments(),
+  ])
   const donorItem = donorRes.items?.[0]
   if (!donorItem) return null
 
-  // 2) מזהי התרומות וההתחייבויות המקושרים לתורם
-  const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
-  const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
-
-  // 3) שליפה לפי ID (תמיד עובדת) + שערים
-  const [rateItems, donationItems, commitmentItems] = await Promise.all([
-    getRawRates(),
-    fetchItemsByIds(donationIds,   DONATION_COLS),
-    fetchItemsByIds(commitmentIds, COMMITMENT_COLS),
-  ])
-
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
-  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
-  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById))
+
+  // 2) סינון ב-JS לפי donorId — אמין לחלוטין, ללא תלות ב-linked_items של Monday
+  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById)).filter(d => d.donorId === id)
+  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById)).filter(c => c.donorId === id)
 
   // --- linking: paid / remaining / pct לכל התחייבות ---
   const byCommitment = new Map<string, Donation[]>()
