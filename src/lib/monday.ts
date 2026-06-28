@@ -687,32 +687,27 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   return { ...mapDonor(donorItem), donations, commitments }
 }
 */
-// גרסא מתוקנת — reverse lookup עם linked_item_ids (API 2025-04).
-// linked_item_ids מחזיר את כל ה-IDs ללא מגבלה, בניגוד ל-linked_items שנחתך ב-~25.
+// גרסא סופית — שולפת את כל לוח התרומות/התחייבויות ומסננת ב-JS לפי donorId.
+// כל גישות ה-reverse lookup (linked_items, value, linked_item_ids) לא מחזירות
+// את כל הפריטים באופן אמין. גישה זו זהה למה שה-lean path עושה ועובדת בוודאות.
+// הביצועים: מוגן ע"י unstable_cache — קריאה אחת בלבד ל-Monday למשך 2 שעות.
 async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> {
-  // 1) פריט התורם + עמודות הקישור — linked_item_ids מחזיר הכל
-  const donorRes = await mondayQuery(`{ items(ids:[${id}]) {
-    id name updated_at assets{public_url}
-    column_values(ids:[${DONOR_COLS}, "${C.donor.donationsRel}", "${C.donor.commitmentsRel}"]) { ${COL_FRAGMENT} }
-  } }`)
+  const [donorRes, rateItems, donationItems, commitmentItems] = await Promise.all([
+    mondayQuery(`{ items(ids:[${id}]) {
+      id name updated_at assets{public_url}
+      column_values(ids:[${DONOR_COLS}]) { ${COL_FRAGMENT} }
+    } }`),
+    getRawRates(),
+    getRawDonations(),
+    getRawCommitments(),
+  ])
   const donorItem = donorRes.items?.[0]
   if (!donorItem) return null
 
-  // 2) IDs מלאים דרך linked_item_ids
-  const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
-  const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
-
-  // 3) שליפה לפי ID ושערים — במקביל
-  const [rateItems, donationItems, commitmentItems] = await Promise.all([
-    getRawRates(),
-    fetchItemsByIds(donationIds,   DONATION_COLS),
-    fetchItemsByIds(commitmentIds, COMMITMENT_COLS),
-  ])
-
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
-  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
-  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById))
+  const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById)).filter(d => d.donorId === id)
+  const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById)).filter(c => c.donorId === id)
 
   // --- linking: paid / remaining / pct לכל התחייבות ---
   const byCommitment = new Map<string, Donation[]>()
