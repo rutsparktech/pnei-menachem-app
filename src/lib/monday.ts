@@ -701,6 +701,8 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   // 2) מזהי התרומות וההתחייבויות המקושרים לתורם
   const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
   const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
+  console.log(`[DBG donor=${id}] donationIds(${donationIds.length}):`, donationIds)
+  console.log(`[DBG donor=${id}] commitmentIds(${commitmentIds.length}):`, commitmentIds)
 
   // 3) שליפה ראשונה: התחייבויות + שערים — כדי לדעת אילו תרומות לשלוף
   const [rateItems, commitmentItems] = await Promise.all([
@@ -711,13 +713,18 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   // 4) מזהי תרומות: איחוד מהתורם + מהתחייבויות (ללא כפילויות)
   //    עמודת donationsRel על ההתחייבות היא source of truth — תורמת תרומות שייתכן
   //    שאינן מופיעות ב-donationsRel של התורם (למשל כשהקישור נוסף רק מצד ההתחייבות)
-  const commitmentDonationIds = commitmentItems.flatMap(ci =>
-    linkedIds(ci.column_values, C.commitment.donationsRel)
-  )
+  const commitmentDonationIds = commitmentItems.flatMap(ci => {
+    const relCol = col(ci.column_values, C.commitment.donationsRel)
+    const ids = linkedIds(ci.column_values, C.commitment.donationsRel)
+    console.log(`[DBG commitment=${ci.id}] donationsRel value=${relCol?.value?.slice(0, 200)} linked_items=${JSON.stringify(relCol?.linked_items)} → ids(${ids.length}):`, ids)
+    return ids
+  })
   const allDonationIds = [...new Set([...donationIds, ...commitmentDonationIds])]
+  console.log(`[DBG donor=${id}] allDonationIds(${allDonationIds.length}):`, allDonationIds)
 
   // 5) שליפת תרומות לפי כל המזהים
   const donationItems = await fetchItemsByIds(allDonationIds, DONATION_COLS)
+  console.log(`[DBG donor=${id}] donationItems fetched(${donationItems.length}):`, donationItems.map(d => d.id))
 
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
@@ -768,7 +775,7 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
 }
 
 export const getDonorDetail = unstable_cache(
-  computeDonorBundle, ['pm-donor-detail-v2'], { revalidate: 7200, tags: ['monday-data'] }
+  computeDonorBundle, ['pm-donor-detail-v3'], { revalidate: 7200, tags: ['monday-data'] }
 )
 
 
