@@ -27,11 +27,18 @@ export default function RefreshButton({ lastUpdated }: { lastUpdated: string }) 
     return () => clearInterval(id)
   }, [syncTime])
 
+  async function handleRefresh() {
+    startTransition(async () => {
+      await fetch('/api/revalidate', { method: 'POST' })
+      router.refresh()
+    })
+  }
+
   return (
     <div className="flex items-center justify-between mb-5">
       <p className="text-xs text-white/50">עודכן לאחרונה: {label}</p>
       <button
-        onClick={() => startTransition(() => { router.refresh() })}
+        onClick={handleRefresh}
         disabled={isPending}
         className="flex items-center gap-1.5 text-xs font-semibold text-white/80 border border-white/20 bg-white/10 px-3 py-1.5 rounded-lg hover:border-white/40 hover:bg-white/15 transition-all active:scale-95 disabled:opacity-50"
       >
