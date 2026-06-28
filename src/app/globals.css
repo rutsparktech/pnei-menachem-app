@@ -20,7 +20,7 @@
 
   --font-sans: var(--font-heebo), 'Heebo', sans-serif;
 
-  --radius-card: 1.25rem;
+  --radius-card: 1rem;
 }
 
 * {
@@ -44,7 +44,7 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
   border-radius: 3px;
 }
 
