@@ -1,5 +1,6 @@
 import { connection } from 'next/server'
-import { fetchAllDonorsWithDetails } from '@/lib/monday'
+import { auth } from '@/auth'
+import { getDonorById } from '@/lib/api'
 import type { NextRequest } from 'next/server'
 
 export async function GET(
@@ -7,10 +8,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection()
+  const session = await auth()
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { id } = await params
-    const donors = await fetchAllDonorsWithDetails()
-    const donor = donors.find((d) => d.id === id)
+    const donor = await getDonorById(id)
     if (!donor) return Response.json({ error: 'תורם לא נמצא' }, { status: 404 })
     return Response.json(donor)
   } catch (err) {
