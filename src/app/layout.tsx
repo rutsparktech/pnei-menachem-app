@@ -23,7 +23,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
-      <body className="min-h-screen flex flex-col bg-background">
+      <body
+        className="min-h-screen flex flex-col"
+        style={{
+          background: 'linear-gradient(160deg, #2d1520 0%, #1a0c14 50%, #221508 100%)',
+          backgroundAttachment: 'fixed',
+        }}
+      >
         <TopHeader />
         <main className="flex-1 pt-16 pb-20 overflow-y-auto">
           <Suspense fallback={null}>{children}</Suspense>
