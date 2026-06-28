@@ -730,7 +730,13 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   const byCommitment = new Map<string, Donation[]>()
   for (const ci of commitmentItems) {
     const ids = linkedIds(ci.column_values, C.commitment.donationsRel)
-    byCommitment.set(ci.id, ids.map(did => donationById.get(did)).filter((d): d is Donation => d !== undefined))
+    const linked = ids.map(did => donationById.get(did)).filter((d): d is Donation => d !== undefined)
+    // תרומות שמקושרות להתחייבות מצד ההתחייבות אך חסר להן commitmentId מצד התרומה —
+    // מעדכנים כדי שה-UI יוכל לסנן אותן נכון לפי commitment.id
+    for (const d of linked) {
+      if (!d.commitmentId) d.commitmentId = ci.id
+    }
+    byCommitment.set(ci.id, linked)
   }
   for (const c of commitments) {
     const linked = byCommitment.get(c.id) ?? []
