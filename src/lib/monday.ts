@@ -52,6 +52,7 @@ const C = {
   },
   commitment: {
     donorRel: 'board_relation_mm00tdz2',
+    donationsRel: 'board_relation_mm00j2rk', // קישור לתרומות — source of truth לאיזו תרומה שייכת לאיזו התחייבות
     rateRel: 'board_relation_mm0ved9f',
     amount: 'numeric_mm0nzwcj',
     currency: 'color_mm0ka46p',
@@ -267,7 +268,7 @@ const DONOR_COLS = [
 ].map((id) => `"${id}"`).join(', ')
 
 const COMMITMENT_COLS = [
-  C.commitment.donorRel, C.commitment.rateRel, C.commitment.amount, C.commitment.currency,
+  C.commitment.donorRel, C.commitment.donationsRel, C.commitment.rateRel, C.commitment.amount, C.commitment.currency,
   C.commitment.date, C.commitment.designation, C.commitment.status, C.commitment.type,
   C.commitment.paymentsCount,
   // notes omitted — display-only
@@ -694,12 +695,22 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
   const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
 
-  // 3) שליפה לפי ID (תמיד עובדת) + שערים
-  const [rateItems, donationItems, commitmentItems] = await Promise.all([
+  // 3) שליפה ראשונה: התחייבויות + שערים — כדי לדעת אילו תרומות לשלוף
+  const [rateItems, commitmentItems] = await Promise.all([
     getRawRates(),
-    fetchItemsByIds(donationIds,   DONATION_COLS),
     fetchItemsByIds(commitmentIds, COMMITMENT_COLS),
   ])
+
+  // 4) מזהי תרומות: איחוד מהתורם + מהתחייבויות (ללא כפילויות)
+  //    עמודת donationsRel על ההתחייבות היא source of truth — תורמת תרומות שייתכן
+  //    שאינן מופיעות ב-donationsRel של התורם (למשל כשהקישור נוסף רק מצד ההתחייבות)
+  const commitmentDonationIds = commitmentItems.flatMap(ci =>
+    linkedIds(ci.column_values, C.commitment.donationsRel)
+  )
+  const allDonationIds = [...new Set([...donationIds, ...commitmentDonationIds])]
+
+  // 5) שליפת תרומות לפי כל המזהים
+  const donationItems = await fetchItemsByIds(allDonationIds, DONATION_COLS)
 
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
@@ -707,10 +718,12 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   const commitments = commitmentItems.map(it => mapCommitment(it, rateMap, nameById))
 
   // --- linking: paid / remaining / pct לכל התחייבות ---
+  // משתמשים ב-donationsRel של ההתחייבות (מהימן יותר מ-commitmentId של התרומה)
+  const donationById = new Map(donations.map(d => [d.id, d]))
   const byCommitment = new Map<string, Donation[]>()
-  for (const d of donations) {
-    if (!d.commitmentId) continue
-    ;(byCommitment.get(d.commitmentId) ?? byCommitment.set(d.commitmentId, []).get(d.commitmentId)!).push(d)
+  for (const ci of commitmentItems) {
+    const ids = linkedIds(ci.column_values, C.commitment.donationsRel)
+    byCommitment.set(ci.id, ids.map(did => donationById.get(did)).filter((d): d is Donation => d !== undefined))
   }
   for (const c of commitments) {
     const linked = byCommitment.get(c.id) ?? []
