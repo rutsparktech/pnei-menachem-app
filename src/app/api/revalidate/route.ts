@@ -1,4 +1,4 @@
-import { revalidateTag } from 'next/cache'
+import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 
 export async function POST() {
@@ -6,6 +6,6 @@ export async function POST() {
   if (!session) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  revalidateTag('monday-data')
+  revalidatePath('/', 'layout')
   return Response.json({ ok: true, timestamp: new Date().toISOString() })
 }
