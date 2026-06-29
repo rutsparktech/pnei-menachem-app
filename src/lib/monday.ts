@@ -691,6 +691,16 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
   if (!donorItem) return null
 
   // 2) מזהי התרומות וההתחייבויות המקושרים לתורם
+  // [diag] מאיפה linkedIds קורא — linked_items או value JSON?
+  const _donRawCol = col(donorItem.column_values, C.donor.donationsRel)
+  const _idSourceLinked = _donRawCol?.linked_items?.length ?? 0
+  const _idSourceValue  = (() => {
+    try { return (JSON.parse(_donRawCol?.value ?? '{}')?.linkedPulseIds ?? []).length } catch { return 0 }
+  })()
+  console.log('[reconcile] donor', id,
+    '| ID source — linked_items:', _idSourceLinked,
+    '| value JSON:', _idSourceValue)
+
   const donationIds   = linkedIds(donorItem.column_values, C.donor.donationsRel)
   const commitmentIds = linkedIds(donorItem.column_values, C.donor.commitmentsRel)
 
@@ -707,6 +717,25 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
     '| commitmentIds(read):', commitmentIds.length,
     '| commitmentItems(fetched):', commitmentItems.length)
   // אם fetched < read — האיבוד הוא בקפיצה השנייה (items(ids))
+
+  const fetchedDonationIds = new Set(donationItems.map(i => i.id))
+  const missingDonationIds = donationIds.filter(id => !fetchedDonationIds.has(id))
+  if (missingDonationIds.length > 0) {
+    console.log('[reconcile] missing donationIds (first 10):', missingDonationIds.slice(0, 10))
+    // [diag] bare fetch — האם ה-IDs החסרים קיימים בכלל ב-Monday ועל איזה board?
+    const _sample = missingDonationIds.slice(0, 10)
+    const _bareResult = await mondayQuery(
+      `{ items(ids:[${_sample.join(',')}]) { id name board { id name } } }`
+    )
+    const _bareItems: Array<{ id: string; name: string; board: { id: string; name: string } }> = _bareResult.items ?? []
+    console.log('[reconcile] bare-fetch of first 10 missing:', _bareItems.length, 'found')
+    if (_bareItems.length > 0) {
+      const _boards = [...new Set(_bareItems.map(i => `${i.board?.id}(${i.board?.name})`))]
+      console.log('[reconcile] their boards:', _boards)
+    } else {
+      console.log('[reconcile] missing items NOT found in Monday — deleted or inaccessible')
+    }
+  }
 
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
