@@ -701,6 +701,13 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
     fetchItemsByIds(commitmentIds, COMMITMENT_COLS),
   ])
 
+  console.log('[reconcile] donor', id,
+    '| donationIds(read):', donationIds.length,
+    '| donationItems(fetched):', donationItems.length,
+    '| commitmentIds(read):', commitmentIds.length,
+    '| commitmentItems(fetched):', commitmentItems.length)
+  // אם fetched < read — האיבוד הוא בקפיצה השנייה (items(ids))
+
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
   const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
@@ -722,6 +729,12 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
 
   // --- אגרגציה לתורם ---
   const totalDonations   = donations.filter(d => isReceived(d) && !isCancelled(d)).reduce((s, d) => s + d.usd, 0)
+  const fwd = (await getDonorList()).find(d => d.id === id)
+  console.log('[reconcile] donor', id,
+    '| reverseTotalUsd:', totalDonations,
+    '| forwardTotalUsd:', fwd?.totalDonations ?? 'N/A',
+    '| delta:', (fwd?.totalDonations ?? 0) - totalDonations)
+
   const totalCommitments = commitments.reduce((s, c) => s + c.usd, 0)
   const paid             = commitments.reduce((s, c) => s + c.paidUsd, 0)
   const yr   = (date: string) => (date ? new Date(date).getFullYear() : 0)
@@ -775,7 +788,7 @@ export const getDonorList = unstable_cache(async (): Promise<Donor[]> => {
   console.log('[cache] getDonorList size:', JSON.stringify(result).length)
   return result
 }, ['pm-donor-list'], { revalidate: 7200, tags: ['monday-data'] })
- 
+
 /*
 גרסא ישנה
 export const getDonorDetail = unstable_cache(async (id: string) => {
