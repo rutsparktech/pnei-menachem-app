@@ -784,7 +784,7 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
 }
 
 export const getDonorDetail = unstable_cache(
-  computeDonorBundle, ['pm-donor-detail-v2'], { revalidate: 7200, tags: ['monday-data'] }
+  computeDonorBundle, ['pm-donor-detail-v3'], { revalidate: 7200, tags: ['monday-data'] }
 )
 
 
