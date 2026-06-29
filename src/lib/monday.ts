@@ -708,6 +708,12 @@ async function computeDonorBundle(id: string): Promise<DonorWithDetails | null> 
     '| commitmentItems(fetched):', commitmentItems.length)
   // אם fetched < read — האיבוד הוא בקפיצה השנייה (items(ids))
 
+  const fetchedDonationIds = new Set(donationItems.map(i => i.id))
+  const missingDonationIds = donationIds.filter(id => !fetchedDonationIds.has(id))
+  if (missingDonationIds.length > 0) {
+    console.log('[reconcile] missing donationIds:', missingDonationIds)
+  }
+
   const rateMap = buildRateMap(rateItems)
   const nameById = new Map([[id, text(donorItem.column_values, C.donor.hebrewName) || donorItem.name]])
   const donations   = donationItems.map(it => mapDonation(it, rateMap, nameById))
