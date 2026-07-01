@@ -85,8 +85,6 @@ export function FloatingAnnotator() {
     setTimeout(() => setCopied(false), 2500)
   }
 
-  if (process.env.NODE_ENV !== 'development') return null
-
   return (
     <>
       {/* Transparent click-catcher when in selecting mode */}
