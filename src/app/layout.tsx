@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import './globals.css'
 import BottomNav from '@/components/BottomNav'
 import TopHeader from '@/components/TopHeader'
+import { FloatingAnnotator } from '@/components/dev/FloatingAnnotator'
 
 const heebo = Heebo({
   variable: '--font-heebo',
@@ -36,6 +37,7 @@ export default function RootLayout({
           <Suspense fallback={null}>{children}</Suspense>
         </main>
         <Suspense fallback={null}><BottomNav /></Suspense>
+        <FloatingAnnotator />
       </body>
     </html>
   )
