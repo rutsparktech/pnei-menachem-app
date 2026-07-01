@@ -29,7 +29,7 @@ rl.close()
 const hash = await bcrypt.hash(password, 12)
 console.log('מצפין סיסמה...')
 
-const { error } = await supabase.from('users').insert({
+const { error } = await supabase.from('app_users').insert({
   username,
   display_name: displayName,
   email,
