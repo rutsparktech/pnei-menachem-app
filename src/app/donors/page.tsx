@@ -60,10 +60,6 @@ export default function Dashboard({ searchParams }: { searchParams: Promise<{ q?
   return (
     <div className="px-4 py-4 md:px-6 lg:px-8">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold text-white mb-1">שלום</h1>
-        <p className="text-sm text-white/60">ניהול תורמים · קרן פני מנחם</p>
-      </div>
-      <div className="mb-5">
         <Suspense><SearchInput placeholder="חיפוש לפי שם, עיר או מספר תורם..." /></Suspense>
       </div>
       <Suspense
